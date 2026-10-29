@@ -21,8 +21,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -43,16 +41,14 @@ class MainActivity : ComponentActivity() {
       MyApplicationTheme {
         Scaffold(
           modifier = Modifier.fillMaxSize(),
-          containerColor = androidx.compose.ui.graphics.Color(0xFF101113),
+          containerColor = androidx.compose.ui.graphics.Color(0xFF38BDF8),
           contentWindowInsets = WindowInsets(0, 0, 0, 0)
         ) { _ ->
           SkyCarGameView(
             onWebViewReady = { webView ->
               gameWebView = webView
             },
-            modifier = Modifier
-              .fillMaxSize()
-              .windowInsetsPadding(WindowInsets.safeDrawing)
+            modifier = Modifier.fillMaxSize()
           )
         }
       }
@@ -89,10 +85,11 @@ fun SkyCarGameView(
         ViewGroup.LayoutParams.MATCH_PARENT,
         ViewGroup.LayoutParams.MATCH_PARENT
       )
-      setBackgroundColor(Color.parseColor("#101113"))
+      setBackgroundColor(Color.parseColor("#38BDF8"))
       isVerticalScrollBarEnabled = false
       isHorizontalScrollBarEnabled = false
       overScrollMode = View.OVER_SCROLL_NEVER
+
       settings.apply {
         javaScriptEnabled = true
         domStorageEnabled = true
@@ -156,7 +153,7 @@ fun SkyCarGameView(
   Box(
     modifier = modifier
       .fillMaxSize()
-      .background(androidx.compose.ui.graphics.Color(0xFF101113))
+      .background(androidx.compose.ui.graphics.Color(0xFF38BDF8))
   ) {
     AndroidView(
       factory = { webView },

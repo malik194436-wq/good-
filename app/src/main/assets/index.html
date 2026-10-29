@@ -3,67 +3,136 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Sky Car</title>
+<title>Thorn Rush</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<meta name="theme-color" content="#ff7a1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Thorn Rush">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Lilita+One&display=swap" rel="stylesheet">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@700&display=swap');
-:root{--bg:#f0f3f8;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1c22;color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#1a1c22;color-scheme:dark}
-html{scroll-padding-top:env(safe-area-inset-top,0px)}
-html,body{height:100%;margin:0}
-body{background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;overscroll-behavior:none;user-select:none;-webkit-user-select:none;touch-action:none}
-canvas{display:block;aspect-ratio:9/16;height:auto;width:min(100%,calc((100vh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)) * 9 / 16));touch-action:none}
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Lilita+One&display=swap');
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #38bdf8;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  touch-action: none;
+}
 </style>
 </head>
 <body>
-<canvas id="c" width="360" height="640"></canvas>
+<canvas id="c"></canvas>
 <script>
 (()=>{
-const cv = document.getElementById('c'), ctx = cv.getContext('2d'), W = 360, H = 640;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d'), W = 360;
+let H = 640;
+
 const rnd = (a, b) => a + Math.random() * (b - a);
 
 // ==========================================
 // TUNING CONSTANTS (Scale, Speed, Physics)
 // ==========================================
-// 1. Car Scale & Position
+const SPEED_MULTIPLIER = 1.0;
+const VERTICAL_RESPONSE = 1.0;
+const SHOW_DEBUG = true;
+
+const THRUST_RISE_TIME = 0.10;
+const THRUST_FALL_TIME = 0.25;
+const AIR_DRAG = 1.2;
+
 const CAR_SCALE = 2.0;
 const CAR_X = 140;
-const CX = CAR_X; // alias for backwards compatibility
+const CX = CAR_X;
 
-// Hitbox dimensions scaled by CAR_SCALE (car length ~160 px, ~44% screen width)
 const HITBOX_HALF_W = 26 * CAR_SCALE;
 const HITBOX_TOP_OFFSET = 9 * CAR_SCALE;
 const HITBOX_BOT_OFFSET = 11 * CAR_SCALE;
+const CAR_HITBOX_H = HITBOX_TOP_OFFSET + HITBOX_BOT_OFFSET; // 40px
 
-// 2. Vertical movement constants (gentle, floaty movement)
-const LIFT_ACCEL = 360;
-const GRAVITY = 240;
-const MAX_UP_SPEED = 120;
-const MAX_DOWN_SPEED = 110;
+// Vertical Handling in canvas-height units (H = canvas height)
+let LIFT_ACCEL = 0.45 * H * VERTICAL_RESPONSE;
+let GRAVITY = 0.28 * H * VERTICAL_RESPONSE;
+let MAX_UP_SPEED = 0.13 * H * VERTICAL_RESPONSE;
+let MAX_DOWN_SPEED = 0.10 * H * VERTICAL_RESPONSE;
 
-// 3. Scroll speed constants
-const START_SPEED = 100;
-const MAX_SPEED = 220;
-const SPEED_DISTANCE_DIVISOR = 150;
-
-// 4. Level & Platform Layout constants
-const ROAD_TOP = 400; // Platform top surface at y = 400
-const CAR_REST_Y = ROAD_TOP + 24 - 16 * CAR_SCALE; // Center y at rest on road (385.6 px, wheels touch asphalt)
-const START_ROAD_START = -50, START_ROAD_END = 470; // 520 px long
-const LEVEL_LENGTH = 1000;
-const TUNNEL_START_X = 650;
-const TUNNEL_END_X = TUNNEL_START_X + LEVEL_LENGTH; // 1650
-const FINISH_OPEN_GAP = 300;
-const FINISH_ROAD_X = TUNNEL_END_X + FINISH_OPEN_GAP; // 1950
-const FINISH_ROAD_LEN = 520;
-const FINISH_ROAD_END = FINISH_ROAD_X + FINISH_ROAD_LEN; // 2470
+const ROAD_LANE_H = 36;
+let ROAD_TOP = 400;
+const CAR_DRAW_W = 142;
+let CAR_DRAW_H = 48;
+let CAR_REST_Y = ROAD_TOP + 3;
+const START_ROAD_START = -100, START_ROAD_END = 370;
+const LEVEL_LENGTH = 1100;
+const TUNNEL_START_X = 740;
+const TUNNEL_END_X = TUNNEL_START_X + LEVEL_LENGTH;
+const FINISH_OPEN_GAP = 350;
+const FINISH_ROAD_X = TUNNEL_END_X + FINISH_OPEN_GAP;
+const FINISH_ROAD_LEN = 600;
+const FINISH_ROAD_END = FINISH_ROAD_X + FINISH_ROAD_LEN;
 
 const RETRY_FROM_LEVEL_START = true;
 
-// Deterministic PRNG using integer hashing and Mulberry32
+let topInset = 34; // Minimum 34px to clear phone status bar
+let botInset = 0;
+
+function updateSafeInsets() {
+  try {
+    const div = document.createElement('div');
+    div.style.cssText = 'position:fixed;top:0;left:0;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none;';
+    document.body.appendChild(div);
+    const cs = window.getComputedStyle(div);
+    const pt = parseFloat(cs.paddingTop) || 0;
+    const pb = parseFloat(cs.paddingBottom) || 0;
+    document.body.removeChild(div);
+
+    const rect = cv.getBoundingClientRect();
+    const scale = H / (rect.height || window.innerHeight || 1);
+    topInset = Math.max(34, Math.round(pt * scale));
+    botInset = Math.round(pb * scale);
+  } catch (e) {
+    topInset = 34;
+    botInset = 0;
+  }
+}
+
+let dpr = 1;
+function resizeCanvas() {
+  const winW = window.innerWidth || cv.clientWidth || 360;
+  const winH = window.innerHeight || cv.clientHeight || 640;
+  H = Math.max(560, Math.round(W * (winH / winW)));
+  dpr = Math.min(window.devicePixelRatio || 1, 3);
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  ROAD_TOP = H - 240;
+  CAR_REST_Y = ROAD_TOP + 3;
+
+  LIFT_ACCEL = 0.45 * H * VERTICAL_RESPONSE;
+  GRAVITY = 0.28 * H * VERTICAL_RESPONSE;
+  MAX_UP_SPEED = 0.13 * H * VERTICAL_RESPONSE;
+  MAX_DOWN_SPEED = 0.10 * H * VERTICAL_RESPONSE;
+
+  updateSafeInsets();
+}
+resizeCanvas();
+
+// Deterministic PRNG
 function hashInt(n) {
   n = ((n >> 16) ^ n) * 0x45d9f3b;
   n = ((n >> 16) ^ n) * 0x45d9f3b;
@@ -80,218 +149,404 @@ function mulberry32(a) {
   };
 }
 
-// Lists for Level Name Generation (Adjective + Noun, >= 30 words each)
-const ADJECTIVES = [
-  'Amber', 'Radiant', 'Crystal', 'Velvet', 'Azure', 'Solar', 'Golden', 'Emerald',
-  'Mystic', 'Cobalt', 'Silver', 'Crimson', 'Lunar', 'Opal', 'Coral', 'Jade',
-  'Neon', 'Zephyr', 'Apex', 'Prism', 'Astral', 'Twilight', 'Aurora', 'Echo',
-  'Frost', 'Zenith', 'Horizon', 'Mirage', 'Stellar', 'Nova', 'Ruby', 'Topaz',
-  'Quartz', 'Sapphire', 'Copper', 'Chrome', 'Falcon', 'Pulse', 'Vortex', 'Quantum',
-  'Dynamo', 'Aero', 'Celestial', 'Prismatic', 'Obsidian'
+// ==========================================
+// LEVEL BACKGROUND & CAR PRELOADER
+// ==========================================
+const LEVEL_PICTURE_URLS = [
+  'image_39e1ec82.png' // Level 1 custom bright picture
 ];
+const CAR_IMAGE_URL = 'image_dc734168.png';
 
-const NOUNS = [
-  'Harbor', 'Citadel', 'Valley', 'Canyon', 'Peak', 'Sanctuary', 'Spire', 'Ridge',
-  'Oasis', 'Bastion', 'Plateau', 'Haven', 'Atoll', 'Bay', 'Passage', 'Terrace',
-  'Ascent', 'Summit', 'Dune', 'Glade', 'Lagoon', 'Vault', 'Gateway', 'Heights',
-  'Cavern', 'Outpost', 'Station', 'Skyline', 'Overlook', 'Enclave', 'Domain', 'Realm',
-  'Bluff', 'Shore', 'Reef', 'Matrix', 'Crucible', 'Meridian', 'Sector', 'Nexus',
-  'Pinnacle', 'Sanctum', 'Wilds', 'Crest', 'Archway'
+let carImgLoaded = false;
+let carImgFailed = false;
+let trimmedCarCanvas = null;
+let carFadeAlpha = 0;
+
+const preloadedPictures = [];
+let loadedPicturesCount = 0;
+let totalPicturesToLoad = LEVEL_PICTURE_URLS.length + 1; // backgrounds + car image
+let assetsReady = false;
+
+function onAssetLoaded() {
+  loadedPicturesCount++;
+  if (loadedPicturesCount >= totalPicturesToLoad) {
+    assetsReady = true;
+  }
+}
+
+function processCarImage(img) {
+  try {
+    const origW = img.naturalWidth || img.width;
+    const origH = img.naturalHeight || img.height;
+
+    const offCanv = document.createElement('canvas');
+    offCanv.width = origW;
+    offCanv.height = origH;
+    const offCtx = offCanv.getContext('2d');
+    offCtx.drawImage(img, 0, 0);
+
+    const imgData = offCtx.getImageData(0, 0, origW, origH);
+    const d = imgData.data;
+
+    // Green Chroma Key with smooth edge blending & despill:
+    // Do not remove any yellow pixels of the car body.
+    // Only remove pixels where green is clearly higher than both red and blue.
+    const threshLow = 30;
+    const threshHigh = 65;
+
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i];
+      const g = d[i + 1];
+      const b = d[i + 2];
+      const maxRB = Math.max(r, b);
+      const diff = g - maxRB;
+
+      if (diff >= threshHigh) {
+        // Pure green background -> fully transparent
+        d[i + 3] = 0;
+      } else if (diff > threshLow) {
+        // Soft edge blending
+        const factor = (diff - threshLow) / (threshHigh - threshLow);
+        d[i + 3] = Math.round(255 * (1 - factor));
+        // Despill green fringe at boundary
+        d[i + 1] = maxRB;
+      } else {
+        // Never remove or alter yellow body pixels (where r is high).
+        // Only despill dark/neutral edges if green is slightly above red & blue:
+        if (diff > 12 && r < 120) {
+          d[i + 1] = maxRB;
+        }
+      }
+    }
+
+    offCtx.putImageData(imgData, 0, 0);
+
+    // Auto-trim empty transparent space so tires sit at exact bottom edge
+    let minX = origW, maxX = 0, minY = origH, maxY = 0;
+    for (let y = 0; y < origH; y++) {
+      for (let x = 0; x < origW; x++) {
+        const a = d[(y * origW + x) * 4 + 3];
+        if (a > 20) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (minX <= maxX && minY <= maxY) {
+      const trimW = maxX - minX + 1;
+      const trimH = maxY - minY + 1;
+
+      const tCanv = document.createElement('canvas');
+      tCanv.width = trimW;
+      tCanv.height = trimH;
+      const tCtx = tCanv.getContext('2d');
+      tCtx.drawImage(offCanv, minX, minY, trimW, trimH, 0, 0, trimW, trimH);
+
+      trimmedCarCanvas = tCanv;
+      CAR_DRAW_H = Math.round(CAR_DRAW_W * (trimH / trimW));
+      CAR_REST_Y = ROAD_TOP + 3;
+      if (st === 'ready') cy = CAR_REST_Y;
+    }
+    carImgLoaded = true;
+  } catch (err) {
+    console.warn('Failed to process car image:', err);
+  }
+}
+
+function loadLevelPictures() {
+  LEVEL_PICTURE_URLS.forEach((url, idx) => {
+    const item = {
+      index: idx + 1,
+      url,
+      img: new Image(),
+      loaded: false,
+      failed: false,
+      seamlessCanvas: null,
+      unitW: 0
+    };
+
+    item.img.onload = () => {
+      try {
+        item.loaded = true;
+        updatePictureSeamlessCanvas(item);
+      } catch (err) {
+        console.warn('Error processing level image:', err);
+      }
+      onAssetLoaded();
+    };
+
+    item.img.onerror = () => {
+      item.failed = true;
+      onAssetLoaded();
+    };
+
+    item.img.src = url;
+    preloadedPictures.push(item);
+  });
+}
+
+// Load and process car image first before anything else
+const carImg = new Image();
+carImg.onload = () => {
+  if (!trimmedCarCanvas) processCarImage(carImg);
+  carImgLoaded = true;
+  onAssetLoaded();
+  loadLevelPictures();
+};
+carImg.onerror = (err) => {
+  console.warn('Car image failed to load:', err);
+  carImgFailed = true;
+  onAssetLoaded();
+  loadLevelPictures();
+};
+carImg.src = CAR_IMAGE_URL;
+if (carImg.complete && carImg.naturalWidth > 0 && !trimmedCarCanvas) {
+  processCarImage(carImg);
+  carImgLoaded = true;
+}
+
+function updatePictureSeamlessCanvas(item) {
+  if (!item.img || item.img.naturalWidth === 0) return;
+  const aspect = item.img.naturalWidth / item.img.naturalHeight;
+  const scaledW = Math.round(aspect * H);
+  item.unitW = scaledW * 2;
+
+  const sCanv = document.createElement('canvas');
+  sCanv.width = item.unitW;
+  sCanv.height = H;
+  const sCtx = sCanv.getContext('2d');
+
+  sCtx.drawImage(item.img, 0, 0, scaledW, H);
+  sCtx.save();
+  sCtx.translate(item.unitW, 0);
+  sCtx.scale(-1, 1);
+  sCtx.drawImage(item.img, 0, 0, scaledW, H);
+  sCtx.restore();
+
+  item.seamlessCanvas = sCanv;
+}
+
+function getLevelPicture(lvl) {
+  if (!preloadedPictures.length) return null;
+  const idx = (lvl - 1) % preloadedPictures.length;
+  const item = preloadedPictures[idx];
+  if (item && item.loaded && !item.failed && item.seamlessCanvas) {
+    return item;
+  }
+  return null;
+}
+
+// ==========================================
+// AUDIO SYSTEM (Real mute support & Web Audio)
+// ==========================================
+let audioCtx = null;
+let masterGain = null;
+let soundEnabled = true;
+let vibrateEnabled = true;
+
+try {
+  soundEnabled = localStorage.getItem('skycarSound') !== 'false';
+  vibrateEnabled = localStorage.getItem('skycarVibrate') !== 'false';
+} catch(e) {}
+
+function initAudio() {
+  if (audioCtx) return;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+  audioCtx = new AudioContext();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = soundEnabled ? 0.35 : 0;
+  masterGain.connect(audioCtx.destination);
+}
+
+function setSound(enabled) {
+  soundEnabled = enabled;
+  try { localStorage.setItem('skycarSound', enabled ? 'true' : 'false'); } catch(e) {}
+  if (masterGain && audioCtx) {
+    masterGain.gain.setValueAtTime(soundEnabled ? 0.35 : 0, audioCtx.currentTime);
+  }
+}
+
+function setVibrate(enabled) {
+  vibrateEnabled = enabled;
+  try { localStorage.setItem('skycarVibrate', enabled ? 'true' : 'false'); } catch(e) {}
+}
+
+function triggerVibrate(pattern) {
+  if (!vibrateEnabled) return;
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch(e) {}
+}
+
+function playClickSound() {
+  if (!soundEnabled) return;
+  initAudio();
+  if (!audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    const now = audioCtx.currentTime;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(540, now);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.06);
+    g.gain.setValueAtTime(0.25, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+    osc.connect(g);
+    g.connect(masterGain);
+    osc.start(now);
+    osc.stop(now + 0.06);
+  } catch(e) {}
+}
+
+function playCrashSound() {
+  triggerVibrate([80, 40, 100]);
+  if (!soundEnabled) return;
+  initAudio();
+  if (!audioCtx) return;
+  try {
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(160, now);
+    osc.frequency.exponentialRampToValueAtTime(30, now + 0.32);
+    g.gain.setValueAtTime(0.45, now);
+    g.gain.exponentialRampToValueAtTime(0.01, now + 0.32);
+    osc.connect(g);
+    g.connect(masterGain);
+    osc.start(now);
+    osc.stop(now + 0.32);
+  } catch(e) {}
+}
+
+function playWinSound() {
+  triggerVibrate([40, 50, 40, 50, 90]);
+  if (!soundEnabled) return;
+  initAudio();
+  if (!audioCtx) return;
+  try {
+    const now = audioCtx.currentTime;
+    const freqs = [523.25, 659.25, 783.99, 1046.5];
+    freqs.forEach((f, i) => {
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      const t = now + i * 0.09;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f, t);
+      g.gain.setValueAtTime(0.3, t);
+      g.gain.exponentialRampToValueAtTime(0.01, t + 0.22);
+      osc.connect(g);
+      g.connect(masterGain);
+      osc.start(t);
+      osc.stop(t + 0.22);
+    });
+  } catch(e) {}
+}
+
+// ==========================================
+// PROCEDURAL LEVEL CONFIG & FALLBACK SCENES
+// ==========================================
+const SCENE_NAMES = [
+  'Sky Town',
+  'Beach Town',
+  'Candy Land',
+  'Snow Village',
+  'Desert Oasis',
+  'Jungle Temple',
+  'Space Station',
+  'Underwater City'
 ];
-
-const BG_LAYER_TYPES = [
-  'clouds', 'rolling hills', 'mountains', 'city skyline', 'floating islands',
-  'sun rays', 'waves', 'forest silhouettes', 'balloons', 'windmills',
-  'geometric shapes', 'stars and moon'
-];
-
-const PARTICLE_TYPES = ['dust', 'petals', 'snow', 'bubbles', 'sparkles', 'leaves'];
 
 const SHAPE_TYPES = [
   'cone', 'needle', 'fat stud', 'double-cone', 'faceted crystal',
   'curved thorn', 'fork', 'saw tooth', 'bullet', 'flame-shaped'
 ];
-
 const RAIL_STYLES = ['rivets', 'bolts', 'small gears', 'chain links', 'dots'];
-const GLOSS_STYLES = ['metal', 'glass', 'matte'];
 
-// Generate procedural visual config for any level
-function generateLevelConfig(level, prev) {
-  // Levels 1, 2, 3 use classic themes from video
-  if (level === 1) {
-    return {
-      level: 1,
-      name: 'Steel Foundry',
-      H: 215,
-      bgTop: 'hsl(35, 36%, 94%)',
-      bgBot: 'hsl(15, 30%, 87%)',
-      bgLayers: ['clouds', 'city skyline'],
-      particleType: 'dust',
-      spikeColor: { h: 215, s: 15, l: 65 }, // steel silver
-      shapeType: 'cone',
-      width: 12,
-      heightRatio: 2.0,
-      tipSharpness: 'medium',
-      collarRing: true,
-      bodyCurve: 'straight',
-      bend: 0,
-      facets: 0,
-      railStyle: 'rivets',
-      railColor: '#7a828e',
-      glossStyle: 'metal',
-      accentColor: '#5a6270',
-      glowColor: '#7a828e'
-    };
-  }
-  if (level === 2) {
-    return {
-      level: 2,
-      name: 'Toxic Jungle',
-      H: 135,
-      bgTop: 'hsl(315, 35%, 95%)',
-      bgBot: 'hsl(295, 30%, 88%)',
-      bgLayers: ['rolling hills', 'waves'],
-      particleType: 'petals',
-      spikeColor: { h: 135, s: 80, l: 46 }, // glossy green
-      shapeType: 'cone',
-      width: 12,
-      heightRatio: 2.2,
-      tipSharpness: 'sharp',
-      collarRing: true,
-      bodyCurve: 'straight',
-      bend: 0,
-      facets: 0,
-      railStyle: 'bolts',
-      railColor: '#2b6e38',
-      glossStyle: 'metal',
-      accentColor: 'hsl(135, 80%, 45%)',
-      glowColor: 'hsl(135, 85%, 45%)'
-    };
-  }
-  if (level === 3) {
-    return {
-      level: 3,
-      name: 'Molten Caldera',
-      H: 355,
-      bgTop: 'hsl(175, 38%, 94%)',
-      bgBot: 'hsl(155, 32%, 87%)',
-      bgLayers: ['mountains', 'sun rays'],
-      particleType: 'sparkles',
-      spikeColor: { h: 355, s: 85, l: 48 }, // glossy red
-      shapeType: 'cone',
-      width: 12,
-      heightRatio: 2.4,
-      tipSharpness: 'sharp',
-      collarRing: true,
-      bodyCurve: 'straight',
-      bend: 0,
-      facets: 0,
-      railStyle: 'rivets',
-      railColor: '#8a2020',
-      glossStyle: 'metal',
-      accentColor: 'hsl(355, 80%, 50%)',
-      glowColor: 'hsl(355, 85%, 45%)'
-    };
-  }
-
-  // Levels >= 4: procedurally generated from seed, guaranteed to differ from previous level
-  for (let salt = 0; salt < 60; salt++) {
-    const seed = hashInt(level * 10007 + salt * 9973);
-    const rng = mulberry32(seed);
-    const pick = arr => arr[Math.floor(rng() * arr.length)];
-    const range = (a, b) => a + rng() * (b - a);
-
-    let H = Math.round((level * 137.508 + salt * 43) % 360);
-    if (H < 0) H += 360;
-
-    let hueDiff = prev ? Math.abs(H - prev.H) : 90;
-    if (hueDiff > 180) hueDiff = 360 - hueDiff;
-    if (hueDiff < 45 && salt < 50) continue;
-
-    const satTop = Math.round(range(30, 45));
-    const litTop = Math.round(range(92, 96));
-    const satBot = Math.round(range(25, 40));
-    const litBot = Math.round(range(84, 90));
-
-    const bgTop = `hsl(${(H + 180) % 360}, ${satTop}%, ${litTop}%)`;
-    const bgBot = `hsl(${(H + 160) % 360}, ${satBot}%, ${litBot}%)`;
-
-    // 2 or 3 soft parallax layers
-    const numLayers = rng() > 0.4 ? 3 : 2;
-    const bgLayers = [];
-    const pool = [...BG_LAYER_TYPES];
-    for (let k = 0; k < numLayers; k++) {
-      const idx = Math.floor(rng() * pool.length);
-      bgLayers.push(pool.splice(idx, 1)[0]);
-    }
-
-    const particleType = pick(PARTICLE_TYPES);
-    const shapeType = pick(SHAPE_TYPES);
-    const width = Math.round(range(9, 16));
-    const heightRatio = +(range(1.4, 3.2)).toFixed(2);
-    const tipSharpness = pick(['sharp', 'medium', 'rounded']);
-    const collarRing = rng() > 0.4;
-    const bodyCurve = pick(['straight', 'bulged', 'concave']);
-    const bend = +(range(-0.4, 0.4)).toFixed(2);
-    const facets = pick([0, 3, 4, 6]);
-    const railStyle = pick(RAIL_STYLES);
-    const glossStyle = pick(GLOSS_STYLES);
-
-    const spikeSat = Math.round(range(70, 90));
-    const spikeLit = Math.round(range(42, 55));
-    const spikeColor = { h: H, s: spikeSat, l: spikeLit };
-
-    const railHue = H;
-    const railSat = Math.round(range(15, 35));
-    const railLit = Math.round(range(45, 65));
-    const railColor = `hsl(${railHue}, ${railSat}%, ${railLit}%)`;
-
-    const adj = pick(ADJECTIVES);
-    const noun = pick(NOUNS);
-    const name = `${adj} ${noun}`;
-
-    const cfg = {
-      level,
-      name,
-      H,
-      bgTop,
-      bgBot,
-      bgLayers,
-      particleType,
-      spikeColor,
-      shapeType,
-      width,
-      heightRatio,
-      tipSharpness,
-      collarRing,
-      bodyCurve,
-      bend,
-      facets,
-      railStyle,
-      railColor,
-      glossStyle,
-      accentColor: `hsl(${H}, 80%, 50%)`,
-      glowColor: `hsl(${H}, 85%, 45%)`
-    };
-
-    if (prev) {
-      let diffs = 0;
-      if (cfg.shapeType !== prev.shapeType) diffs++;
-      if (Math.abs(cfg.width - prev.width) >= 2) diffs++;
-      if (Math.abs(cfg.heightRatio - prev.heightRatio) >= 0.3) diffs++;
-      if (cfg.railStyle !== prev.railStyle) diffs++;
-      if (cfg.glossStyle !== prev.glossStyle) diffs++;
-      if (cfg.particleType !== prev.particleType) diffs++;
-      if (cfg.bgLayers[0] !== prev.bgLayers[0]) diffs++;
-
-      if (diffs < 3 && salt < 50) continue;
-    }
-
-    return cfg;
-  }
+function getSceneType(level) {
+  return (level - 1) % 8;
 }
 
-// Config cache: deterministic across retries
+function generateLevelConfig(level, prev) {
+  const sceneId = getSceneType(level);
+  const seed = hashInt(level * 10007 + 773);
+  const rng = mulberry32(seed);
+  const pick = arr => arr[Math.floor(rng() * arr.length)];
+  const range = (a, b) => a + rng() * (b - a);
+
+  let H = Math.round((level * 137.508) % 360);
+  const name = SCENE_NAMES[sceneId] + (level > 8 ? ` ${Math.floor((level - 1) / 8) + 1}` : '');
+
+  let bgTop, bgBot, cloudColor;
+  switch (sceneId) {
+    case 0: // Sky Town
+      bgTop = '#48cae4'; bgBot = '#caf0f8'; cloudColor = '#ffffff'; H = 195;
+      break;
+    case 1: // Beach Town
+      bgTop = '#00b4d8'; bgBot = '#ffd166'; cloudColor = '#ffffff'; H = 45;
+      break;
+    case 2: // Candy Land
+      bgTop = '#ff70a6'; bgBot = '#ffd670'; cloudColor = '#fff0f5'; H = 330;
+      break;
+    case 3: // Snow Village
+      bgTop = '#7097c2'; bgBot = '#dceaf7'; cloudColor = '#ffffff'; H = 210;
+      break;
+    case 4: // Desert Oasis
+      bgTop = '#f77f00'; bgBot = '#fcbf49'; cloudColor = '#fff5eb'; H = 35;
+      break;
+    case 5: // Jungle Temple
+      bgTop = '#2ec4b6'; bgBot = '#cbf3f0'; cloudColor = '#f0fff4'; H = 150;
+      break;
+    case 6: // Space Station
+      bgTop = '#240046'; bgBot = '#7b2cbf'; cloudColor = '#ff9e00'; H = 275;
+      break;
+    case 7: // Underwater City
+      bgTop = '#023e8a'; bgBot = '#0096c7'; cloudColor = '#90e0ef'; H = 190;
+      break;
+  }
+
+  if (level > 8) {
+    const shift = Math.floor(rng() * 40) - 20;
+    H = (H + shift + 360) % 360;
+  }
+
+  const shapeType = pick(SHAPE_TYPES);
+  const width = Math.round(range(10, 15));
+  const heightRatio = +(range(1.6, 2.8)).toFixed(2);
+  const tipSharpness = pick(['sharp', 'medium', 'rounded']);
+  const collarRing = rng() > 0.35;
+  const bend = +(range(-0.3, 0.3)).toFixed(2);
+  const railStyle = pick(RAIL_STYLES);
+
+  const spikeSat = Math.round(range(75, 95));
+  const spikeLit = Math.round(range(44, 56));
+  const spikeColor = { h: H, s: spikeSat, l: spikeLit };
+  const railColor = `hsl(${H}, 35%, 52%)`;
+
+  return {
+    level,
+    sceneId,
+    name,
+    H,
+    bgTop,
+    bgBot,
+    cloudColor,
+    spikeColor,
+    shapeType,
+    width,
+    heightRatio,
+    tipSharpness,
+    collarRing,
+    bend,
+    railStyle,
+    railColor,
+    accentColor: `hsl(${H}, 90%, 50%)`,
+    glowColor: `hsl(${H}, 95%, 60%)`
+  };
+}
+
 const levelConfigCache = new Map();
 function getLevelConfig(level) {
   if (levelConfigCache.has(level)) return levelConfigCache.get(level);
@@ -301,11 +556,22 @@ function getLevelConfig(level) {
   return cfg;
 }
 
-// Offscreen Canvases for fast pre-rendered rendering (60 FPS on mobile)
 let curConfig = getLevelConfig(1);
 let spikeCanvases = {};
-let bgGradientCanvas = null;
-let parallaxCanvases = [];
+let fallbackBgCanvas = null;
+let fallbackParallaxCanvases = [];
+
+function roundRect(c, x, y, w, h, r) {
+  if (w < 2 * r) r = w / 2;
+  if (h < 2 * r) r = h / 2;
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
 
 function renderSpikeToCanvas(canvas, isTop, h, cfg) {
   const sCtx = canvas.getContext('2d');
@@ -321,590 +587,86 @@ function renderSpikeToCanvas(canvas, isTop, h, cfg) {
 
   const H = cfg.spikeColor.h, S = cfg.spikeColor.s, L = cfg.spikeColor.l;
   const colBase = `hsl(${H}, ${S}%, ${L}%)`;
-  const colLight = cfg.glossStyle === 'glass'
-    ? `hsla(${H}, ${Math.min(100, S + 10)}%, ${Math.min(95, L + 28)}%, 0.75)`
-    : `hsl(${H}, ${Math.max(10, S - 20)}%, ${Math.min(95, L + (cfg.glossStyle === 'metal' ? 30 : 15))}%)`;
-  const colDark = `hsl(${H}, ${Math.min(100, S + 10)}%, ${Math.max(14, L - 20)}%)`;
-  const outlineColor = 'rgba(25, 30, 42, 0.95)';
+  const colLight = `hsl(${H}, ${Math.max(10, S - 15)}%, ${Math.min(95, L + 28)}%)`;
+  const colDark = `hsl(${H}, ${Math.min(100, S + 10)}%, ${Math.max(14, L - 22)}%)`;
+  const outlineColor = '#181e28';
 
   sCtx.save();
 
-  // 1. Draw shape silhouette and 3D shading
-  const shape = cfg.shapeType;
-  if (shape === 'needle') {
-    const nw = w * 0.65;
-    // Left facet
-    sCtx.fillStyle = colLight;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - nw / 2, baseY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    // Right facet
-    sCtx.fillStyle = colDark;
-    sCtx.beginPath();
-    sCtx.moveTo(cx, baseY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx + nw / 2, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    // Outline
-    sCtx.strokeStyle = outlineColor;
-    sCtx.lineWidth = 1;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - nw / 2, baseY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx + nw / 2, baseY);
-    sCtx.stroke();
+  // 3D Facets
+  sCtx.fillStyle = colLight;
+  sCtx.beginPath();
+  sCtx.moveTo(cx - w / 2, baseY);
+  sCtx.lineTo(tipX, tipY);
+  sCtx.lineTo(cx, baseY);
+  sCtx.closePath();
+  sCtx.fill();
 
-  } else if (shape === 'fat stud') {
-    const fw = w * 1.25;
-    const midY = baseY + dir * h * 0.45;
-    // Base block
-    sCtx.fillStyle = colBase;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - fw / 2, baseY);
-    sCtx.lineTo(cx - fw * 0.38, midY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx + fw * 0.38, midY);
-    sCtx.lineTo(cx + fw / 2, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    // Left facet highlight
-    sCtx.fillStyle = colLight;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - fw / 2, baseY);
-    sCtx.lineTo(cx - fw * 0.38, midY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    // Right facet shadow
-    sCtx.fillStyle = colDark;
-    sCtx.beginPath();
-    sCtx.moveTo(cx, baseY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx + fw * 0.38, midY);
-    sCtx.lineTo(cx + fw / 2, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    // Outline
-    sCtx.strokeStyle = outlineColor;
-    sCtx.lineWidth = 1;
-    sCtx.stroke();
+  sCtx.fillStyle = colDark;
+  sCtx.beginPath();
+  sCtx.moveTo(cx, baseY);
+  sCtx.lineTo(tipX, tipY);
+  sCtx.lineTo(cx + w / 2, baseY);
+  sCtx.closePath();
+  sCtx.fill();
 
-  } else if (shape === 'double-cone') {
-    const midY = baseY + dir * h * 0.4;
-    const mw = w * 1.15;
-    sCtx.fillStyle = colLight;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.lineTo(cx - mw / 2, midY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    sCtx.fillStyle = colDark;
-    sCtx.beginPath();
-    sCtx.moveTo(cx, baseY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx + mw / 2, midY);
-    sCtx.lineTo(cx + w / 2, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    sCtx.strokeStyle = outlineColor;
-    sCtx.lineWidth = 1;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.lineTo(cx - mw / 2, midY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx + mw / 2, midY);
-    sCtx.lineTo(cx + w / 2, baseY);
-    sCtx.stroke();
+  // Thin dark outline
+  sCtx.strokeStyle = outlineColor;
+  sCtx.lineWidth = 1.4;
+  sCtx.lineJoin = 'round';
+  sCtx.beginPath();
+  sCtx.moveTo(cx - w / 2, baseY);
+  sCtx.lineTo(tipX, tipY);
+  sCtx.lineTo(cx + w / 2, baseY);
+  sCtx.stroke();
 
-  } else if (shape === 'faceted crystal') {
-    const midY = baseY + dir * h * 0.55;
-    // Left facet
-    sCtx.fillStyle = colLight;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.lineTo(cx - w * 0.3, midY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx, baseY + dir * h * 0.35);
-    sCtx.closePath();
-    sCtx.fill();
-    // Right facet
-    sCtx.fillStyle = colDark;
-    sCtx.beginPath();
-    sCtx.moveTo(cx, baseY + dir * h * 0.35);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx + w * 0.3, midY);
-    sCtx.lineTo(cx + w / 2, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    // Bottom facet
-    sCtx.fillStyle = colBase;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.lineTo(cx, baseY + dir * h * 0.35);
-    sCtx.lineTo(cx + w / 2, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    // Facet lines
-    sCtx.strokeStyle = outlineColor;
-    sCtx.lineWidth = 1;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.lineTo(cx - w * 0.3, midY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx + w * 0.3, midY);
-    sCtx.lineTo(cx + w / 2, baseY);
-    sCtx.moveTo(cx, baseY + dir * h * 0.35);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.lineTo(cx, baseY + dir * h * 0.35);
-    sCtx.lineTo(cx + w / 2, baseY);
-    sCtx.stroke();
-
-  } else if (shape === 'curved thorn') {
-    const bendSign = cfg.bend >= 0 ? 1 : -1;
-    const curveOff = bendSign * 6;
-    sCtx.fillStyle = colBase;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.quadraticCurveTo(cx - w * 0.2 + curveOff, baseY + dir * h * 0.5, tipX, tipY);
-    sCtx.quadraticCurveTo(cx + w * 0.4 + curveOff, baseY + dir * h * 0.5, cx + w / 2, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    // Inner highlight ridge
-    sCtx.strokeStyle = colLight;
-    sCtx.lineWidth = 1.8;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w * 0.2, baseY);
-    sCtx.quadraticCurveTo(cx + curveOff * 0.5, baseY + dir * h * 0.5, tipX, tipY);
-    sCtx.stroke();
-    // Outline
-    sCtx.strokeStyle = outlineColor;
-    sCtx.lineWidth = 1;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.quadraticCurveTo(cx - w * 0.2 + curveOff, baseY + dir * h * 0.5, tipX, tipY);
-    sCtx.quadraticCurveTo(cx + w * 0.4 + curveOff, baseY + dir * h * 0.5, cx + w / 2, baseY);
-    sCtx.stroke();
-
-  } else if (shape === 'fork') {
-    const forkBaseY = baseY + dir * h * 0.35;
-    // Solid base
-    sCtx.fillStyle = colBase;
-    sCtx.fillRect(cx - w / 2, isTop ? baseY : forkBaseY, w, Math.abs(forkBaseY - baseY));
-    // 2 Prongs
-    sCtx.fillStyle = colLight;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w * 0.45, forkBaseY);
-    sCtx.lineTo(cx - w * 0.25, tipY);
-    sCtx.lineTo(cx - w * 0.05, forkBaseY);
-    sCtx.closePath();
-    sCtx.fill();
-    sCtx.fillStyle = colDark;
-    sCtx.beginPath();
-    sCtx.moveTo(cx + w * 0.05, forkBaseY);
-    sCtx.lineTo(cx + w * 0.25, tipY);
-    sCtx.lineTo(cx + w * 0.45, forkBaseY);
-    sCtx.closePath();
-    sCtx.fill();
-    // Outline
-    sCtx.strokeStyle = outlineColor;
-    sCtx.lineWidth = 1;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.lineTo(cx - w / 2, forkBaseY);
-    sCtx.lineTo(cx - w * 0.25, tipY);
-    sCtx.lineTo(cx, forkBaseY + dir * 2);
-    sCtx.lineTo(cx + w * 0.25, tipY);
-    sCtx.lineTo(cx + w / 2, forkBaseY);
-    sCtx.lineTo(cx + w / 2, baseY);
-    sCtx.stroke();
-
-  } else if (shape === 'saw tooth') {
-    // Asymmetric saw tooth / shark fin
-    sCtx.fillStyle = colLight;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w * 0.4, baseY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    sCtx.fillStyle = colDark;
-    sCtx.beginPath();
-    sCtx.moveTo(cx, baseY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.quadraticCurveTo(cx + w * 0.3, baseY + dir * h * 0.4, cx + w * 0.45, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    sCtx.strokeStyle = outlineColor;
-    sCtx.lineWidth = 1;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w * 0.4, baseY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.quadraticCurveTo(cx + w * 0.3, baseY + dir * h * 0.4, cx + w * 0.45, baseY);
-    sCtx.stroke();
-
-  } else if (shape === 'bullet') {
-    const domeBaseY = baseY + dir * h * 0.55;
-    sCtx.fillStyle = colLight;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.lineTo(cx - w / 2, domeBaseY);
-    sCtx.quadraticCurveTo(cx - w * 0.2, tipY, tipX, tipY);
-    sCtx.lineTo(cx, tipY);
-    sCtx.lineTo(cx, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    sCtx.fillStyle = colDark;
-    sCtx.beginPath();
-    sCtx.moveTo(cx, baseY);
-    sCtx.lineTo(cx, tipY);
-    sCtx.quadraticCurveTo(cx + w * 0.2, tipY, cx + w / 2, domeBaseY);
-    sCtx.lineTo(cx + w / 2, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    sCtx.strokeStyle = outlineColor;
-    sCtx.lineWidth = 1;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.lineTo(cx - w / 2, domeBaseY);
-    sCtx.quadraticCurveTo(cx - w * 0.2, tipY, tipX, tipY);
-    sCtx.quadraticCurveTo(cx + w * 0.2, tipY, cx + w / 2, domeBaseY);
-    sCtx.lineTo(cx + w / 2, baseY);
-    sCtx.stroke();
-
-  } else if (shape === 'flame-shaped') {
-    sCtx.fillStyle = colBase;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.quadraticCurveTo(cx - w * 0.4, baseY + dir * h * 0.35, cx - w * 0.15, baseY + dir * h * 0.65);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.quadraticCurveTo(cx + w * 0.35, baseY + dir * h * 0.5, cx + w / 2, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    // Inner core
-    sCtx.fillStyle = colLight;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w * 0.2, baseY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx + w * 0.1, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    sCtx.strokeStyle = outlineColor;
-    sCtx.lineWidth = 1;
-    sCtx.stroke();
-
-  } else {
-    // Default: classic 3D cone stud
-    sCtx.fillStyle = colLight;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    sCtx.fillStyle = colDark;
-    sCtx.beginPath();
-    sCtx.moveTo(cx, baseY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx + w / 2, baseY);
-    sCtx.closePath();
-    sCtx.fill();
-    sCtx.strokeStyle = outlineColor;
-    sCtx.lineWidth = 1;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w / 2, baseY);
-    sCtx.lineTo(tipX, tipY);
-    sCtx.lineTo(cx + w / 2, baseY);
-    sCtx.stroke();
-  }
-
-  // 2. Collar ring if enabled
   if (cfg.collarRing) {
-    const crH = 3;
+    const crH = 3.5;
     const crY = isTop ? baseY : baseY - crH;
     sCtx.fillStyle = colBase;
     sCtx.fillRect(cx - (w + 4) / 2, crY, w + 4, crH);
-    sCtx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+    sCtx.fillStyle = 'rgba(255, 255, 255, 0.75)';
     sCtx.fillRect(cx - (w + 4) / 2, crY, w + 4, 1);
-    sCtx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    sCtx.fillRect(cx - (w + 4) / 2, crY + crH - 1, w + 4, 1);
     sCtx.strokeStyle = outlineColor;
-    sCtx.lineWidth = 0.8;
+    sCtx.lineWidth = 1;
     sCtx.strokeRect(cx - (w + 4) / 2, crY, w + 4, crH);
   }
 
-  // 3. Gloss highlights
-  if (cfg.glossStyle === 'metal') {
-    sCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-    sCtx.lineWidth = 1.1;
-    sCtx.beginPath();
-    sCtx.moveTo(cx - w * 0.25, baseY + dir * 3);
-    sCtx.lineTo(tipX - 1, tipY - dir * 2);
-    sCtx.stroke();
-  } else if (cfg.glossStyle === 'glass') {
-    sCtx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-    sCtx.beginPath();
-    sCtx.arc(tipX, tipY - dir * 3, Math.min(2.5, h * 0.14), 0, 6.28);
-    sCtx.fill();
-  }
+  sCtx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+  sCtx.lineWidth = 1.3;
+  sCtx.beginPath();
+  sCtx.moveTo(cx - w * 0.22, baseY + dir * 3);
+  sCtx.lineTo(tipX - 1, tipY - dir * 2);
+  sCtx.stroke();
 
-  // 4. Tip specular dot
   sCtx.fillStyle = '#ffffff';
   sCtx.beginPath();
-  sCtx.arc(tipX, tipY - dir * 1.5, (h > 20 ? 1.4 : 1.0), 0, 6.28);
+  sCtx.arc(tipX, tipY - dir * 1.5, 1.3, 0, 6.28);
   sCtx.fill();
 
   sCtx.restore();
 }
 
-function drawParallaxArt(pCtx, layerType, cfg, layerIdx) {
-  const H_BASE = 640;
-  const HUE = cfg.H;
-  const pastelFill = `hsla(${HUE}, 28%, ${Math.max(68, 86 - layerIdx * 7)}%, ${0.45 + layerIdx * 0.15})`;
-  const pastelStroke = `hsla(${HUE}, 35%, 60%, 0.4)`;
-
+function drawFluffyClouds(pCtx, x, y, scale = 1, alpha = 0.85, tint = '#ffffff') {
   pCtx.save();
-
-  if (layerType === 'clouds') {
-    pCtx.fillStyle = `hsla(${HUE}, 20%, 97%, 0.65)`;
-    // Repeat cloud clusters every 360 px
-    for (const shift of [0, 360]) {
-      const cx1 = 60 + shift, cy1 = 120;
-      pCtx.beginPath();
-      pCtx.arc(cx1, cy1, 32, 0, 6.28);
-      pCtx.arc(cx1 + 28, cy1 - 10, 24, 0, 6.28);
-      pCtx.arc(cx1 + 52, cy1 + 2, 28, 0, 6.28);
-      pCtx.fill();
-
-      const cx2 = 230 + shift, cy2 = 180;
-      pCtx.beginPath();
-      pCtx.arc(cx2, cy2, 28, 0, 6.28);
-      pCtx.arc(cx2 + 25, cy2 - 8, 22, 0, 6.28);
-      pCtx.arc(cx2 + 48, cy2 + 4, 25, 0, 6.28);
-      pCtx.fill();
-    }
-
-  } else if (layerType === 'rolling hills') {
-    pCtx.fillStyle = pastelFill;
+  pCtx.globalAlpha = alpha;
+  pCtx.fillStyle = tint;
+  const circles = [
+    [0, 0, 26], [24, -8, 22], [48, 2, 24], [-22, 4, 18], [20, 8, 20]
+  ];
+  for (const [ox, oy, r] of circles) {
     pCtx.beginPath();
-    pCtx.moveTo(0, H_BASE);
-    for (let x = 0; x <= 720; x += 20) {
-      const y = H_BASE * 0.68 + Math.sin(x * 0.015) * 35 + Math.cos(x * 0.008) * 20;
-      pCtx.lineTo(x, y);
-    }
-    pCtx.lineTo(720, H_BASE);
-    pCtx.closePath();
+    pCtx.arc(x + ox * scale, y + oy * scale, r * scale, 0, Math.PI * 2);
     pCtx.fill();
-
-  } else if (layerType === 'mountains') {
-    for (const shift of [0, 360]) {
-      const peaks = [
-        [30 + shift, H_BASE * 0.72, 80],
-        [140 + shift, H_BASE * 0.62, 110],
-        [270 + shift, H_BASE * 0.68, 95]
-      ];
-      for (const [px, py, pw] of peaks) {
-        // Light slope
-        pCtx.fillStyle = `hsla(${HUE}, 30%, 86%, 0.55)`;
-        pCtx.beginPath();
-        pCtx.moveTo(px, py - pw * 0.9);
-        pCtx.lineTo(px - pw / 2, py + pw * 0.4);
-        pCtx.lineTo(px, py + pw * 0.4);
-        pCtx.closePath();
-        pCtx.fill();
-        // Shadow slope
-        pCtx.fillStyle = `hsla(${HUE}, 30%, 76%, 0.55)`;
-        pCtx.beginPath();
-        pCtx.moveTo(px, py - pw * 0.9);
-        pCtx.lineTo(px + pw / 2, py + pw * 0.4);
-        pCtx.lineTo(px, py + pw * 0.4);
-        pCtx.closePath();
-        pCtx.fill();
-      }
-    }
-
-  } else if (layerType === 'city skyline') {
-    pCtx.fillStyle = pastelFill;
-    for (const shift of [0, 360]) {
-      const buildings = [
-        [15 + shift, 160, 32],
-        [55 + shift, 220, 26],
-        [90 + shift, 190, 38],
-        [135 + shift, 250, 30],
-        [175 + shift, 175, 28],
-        [210 + shift, 230, 35],
-        [255 + shift, 185, 42],
-        [305 + shift, 210, 30]
-      ];
-      for (const [bx, bh, bw] of buildings) {
-        pCtx.fillRect(bx, H_BASE - bh, bw, bh);
-        // Soft window dots
-        pCtx.fillStyle = `hsla(${HUE}, 40%, 96%, 0.4)`;
-        for (let wy = H_BASE - bh + 14; wy < H_BASE - 30; wy += 18) {
-          pCtx.fillRect(bx + 6, wy, 3, 4);
-          pCtx.fillRect(bx + bw - 9, wy, 3, 4);
-        }
-        pCtx.fillStyle = pastelFill;
-      }
-    }
-
-  } else if (layerType === 'floating islands') {
-    pCtx.fillStyle = pastelFill;
-    for (const shift of [0, 360]) {
-      const islands = [
-        [80 + shift, 220, 60, 24],
-        [250 + shift, 170, 75, 28]
-      ];
-      for (const [ix, iy, iw, ih] of islands) {
-        pCtx.beginPath();
-        pCtx.moveTo(ix - iw / 2, iy);
-        pCtx.lineTo(ix + iw / 2, iy);
-        pCtx.lineTo(ix, iy + ih);
-        pCtx.closePath();
-        pCtx.fill();
-        // Foliage cap
-        pCtx.fillStyle = `hsla(${HUE}, 40%, 82%, 0.65)`;
-        pCtx.beginPath();
-        pCtx.ellipse(ix, iy, iw / 2 + 4, 7, 0, 0, 6.28);
-        pCtx.fill();
-        pCtx.fillStyle = pastelFill;
-      }
-    }
-
-  } else if (layerType === 'sun rays') {
-    pCtx.fillStyle = `hsla(${HUE}, 45%, 92%, 0.07)`;
-    for (let r = -200; r < 900; r += 120) {
-      pCtx.beginPath();
-      pCtx.moveTo(r, 0);
-      pCtx.lineTo(r + 60, 0);
-      pCtx.lineTo(r - 100, H_BASE);
-      pCtx.lineTo(r - 160, H_BASE);
-      pCtx.closePath();
-      pCtx.fill();
-    }
-
-  } else if (layerType === 'waves') {
-    pCtx.strokeStyle = pastelStroke;
-    pCtx.lineWidth = 3;
-    for (let row = 0; row < 3; row++) {
-      const baseY = H_BASE * 0.7 + row * 45;
-      pCtx.beginPath();
-      for (let x = 0; x <= 720; x += 15) {
-        const y = baseY + Math.sin(x * 0.02 + row * 1.5) * 12;
-        if (x === 0) pCtx.moveTo(x, y); else pCtx.lineTo(x, y);
-      }
-      pCtx.stroke();
-    }
-
-  } else if (layerType === 'forest silhouettes') {
-    pCtx.fillStyle = pastelFill;
-    for (const shift of [0, 360]) {
-      for (let tx = 20 + shift; tx < 360 + shift; tx += 40) {
-        const ty = H_BASE * 0.72;
-        pCtx.beginPath();
-        pCtx.moveTo(tx, ty - 45);
-        pCtx.lineTo(tx - 16, ty);
-        pCtx.lineTo(tx + 16, ty);
-        pCtx.closePath();
-        pCtx.fill();
-        pCtx.fillRect(tx - 2.5, ty, 5, 20);
-      }
-    }
-
-  } else if (layerType === 'balloons') {
-    for (const shift of [0, 360]) {
-      const balloons = [
-        [90 + shift, 140, 16],
-        [280 + shift, 180, 20]
-      ];
-      for (const [bx, by, br] of balloons) {
-        pCtx.fillStyle = `hsla(${HUE + 40}, 65%, 85%, 0.65)`;
-        pCtx.beginPath();
-        pCtx.arc(bx, by, br, 0, 6.28);
-        pCtx.fill();
-        // Basket
-        pCtx.fillStyle = `hsla(${HUE}, 30%, 60%, 0.5)`;
-        pCtx.fillRect(bx - 3, by + br + 4, 6, 5);
-      }
-    }
-
-  } else if (layerType === 'windmills') {
-    pCtx.fillStyle = pastelFill;
-    pCtx.strokeStyle = pastelFill;
-    pCtx.lineWidth = 1.5;
-    for (const shift of [0, 360]) {
-      for (const wx of [120 + shift, 290 + shift]) {
-        const wy = H_BASE * 0.75;
-        // Tower
-        pCtx.beginPath();
-        pCtx.moveTo(wx - 4, wy);
-        pCtx.lineTo(wx - 2, wy - 55);
-        pCtx.lineTo(wx + 2, wy - 55);
-        pCtx.lineTo(wx + 4, wy);
-        pCtx.closePath();
-        pCtx.fill();
-        // 4 blades
-        for (let a = 0; a < 4; a++) {
-          const ang = (a * Math.PI) / 2 + 0.4;
-          pCtx.beginPath();
-          pCtx.moveTo(wx, wy - 55);
-          pCtx.lineTo(wx + Math.cos(ang) * 22, wy - 55 + Math.sin(ang) * 22);
-          pCtx.stroke();
-        }
-      }
-    }
-
-  } else if (layerType === 'geometric shapes') {
-    pCtx.strokeStyle = pastelStroke;
-    pCtx.lineWidth = 2;
-    for (const shift of [0, 360]) {
-      // Floating hexagons & circles
-      pCtx.beginPath();
-      pCtx.arc(80 + shift, 150, 18, 0, 6.28);
-      pCtx.stroke();
-
-      pCtx.strokeRect(260 + shift, 190, 22, 22);
-      pCtx.beginPath();
-      pCtx.arc(190 + shift, 240, 14, 0, 6.28);
-      pCtx.stroke();
-    }
-
-  } else if (layerType === 'stars and moon') {
-    pCtx.fillStyle = `hsla(${HUE}, 40%, 95%, 0.75)`;
-    // Crescent moon
-    for (const shift of [0, 360]) {
-      const mx = 290 + shift, my = 100;
-      pCtx.beginPath();
-      pCtx.arc(mx, my, 18, 0, 6.28);
-      pCtx.fill();
-      pCtx.fillStyle = `hsl(${(HUE + 180) % 360}, 35%, 94%)`;
-      pCtx.beginPath();
-      pCtx.arc(mx + 6, my - 3, 15, 0, 6.28);
-      pCtx.fill();
-
-      // Delicate 4-point stars
-      pCtx.fillStyle = `hsla(${HUE}, 50%, 96%, 0.7)`;
-      for (const [sx, sy] of [[50 + shift, 90], [130 + shift, 140], [210 + shift, 80], [330 + shift, 160]]) {
-        pCtx.fillRect(sx - 1, sy - 4, 2, 8);
-        pCtx.fillRect(sx - 4, sy - 1, 8, 2);
-      }
-    }
   }
-
+  pCtx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+  pCtx.beginPath();
+  pCtx.ellipse(x + 12 * scale, y - 6 * scale, 34 * scale, 12 * scale, 0, 0, Math.PI * 2);
+  pCtx.fill();
   pCtx.restore();
 }
 
-function prerenderLevelAssets(cfg) {
-  curConfig = cfg;
-
-  // 1. Pre-render 6 spike sprites: 3 sizes x 2 directions
+function prerenderSpikes(cfg) {
   const sizes = { small: 12, medium: 22, big: 36 };
   for (const sKey in sizes) {
     const h = sizes[sKey];
@@ -918,110 +680,389 @@ function prerenderLevelAssets(cfg) {
       renderSpikeToCanvas(spikeCanvases[key], dir === 'top', h, cfg);
     }
   }
+}
 
-  // 2. Pre-render pastel background gradient (360 x 640)
-  if (!bgGradientCanvas) {
-    bgGradientCanvas = document.createElement('canvas');
-    bgGradientCanvas.width = W;
-    bgGradientCanvas.height = H;
+function prerenderFallbackScene(cfg) {
+  if (!fallbackBgCanvas) {
+    fallbackBgCanvas = document.createElement('canvas');
+    fallbackBgCanvas.width = W;
+    fallbackBgCanvas.height = H;
   }
-  const bgCtx = bgGradientCanvas.getContext('2d');
+  const bgCtx = fallbackBgCanvas.getContext('2d');
   const grad = bgCtx.createLinearGradient(0, 0, 0, H);
   grad.addColorStop(0, cfg.bgTop);
   grad.addColorStop(1, cfg.bgBot);
   bgCtx.fillStyle = grad;
   bgCtx.fillRect(0, 0, W, H);
 
-  // 3. Pre-render Parallax Layers (720 x 640 for seamless horizontal scrolling)
-  parallaxCanvases = [];
-  const layers = cfg.bgLayers || ['clouds', 'rolling hills'];
-  for (let idx = 0; idx < layers.length; idx++) {
-    const pCanv = document.createElement('canvas');
-    pCanv.width = 720;
-    pCanv.height = H;
-    const pCtx = pCanv.getContext('2d');
-    drawParallaxArt(pCtx, layers[idx], cfg, idx);
-    parallaxCanvases.push(pCanv);
-  }
-
-  // 4. Re-initialize atmospheric drifting particles according to chosen particleType
-  initAtmosphereParticles(cfg.particleType, cfg.H);
+  // Soft sunlight highlight
+  const sunGrad = bgCtx.createRadialGradient(W * 0.75, H * 0.15, 10, W * 0.75, H * 0.15, W * 0.6);
+  sunGrad.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
+  sunGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  bgCtx.fillStyle = sunGrad;
+  bgCtx.fillRect(0, 0, W, H);
 }
 
-// Atmospheric particles system (dust, petals, snow, bubbles, sparkles, leaves)
-const atmoParts = [];
-function initAtmosphereParticles(type, hue) {
-  atmoParts.length = 0;
-  for (let i = 0; i < 24; i++) {
-    atmoParts.push({
-      x: rnd(0, W),
-      y: rnd(0, H),
-      vx: rnd(-18, -4),
-      vy: rnd(-6, 6),
-      size: rnd(2, 5),
-      phase: rnd(0, 6.28),
-      rot: rnd(0, 6.28),
-      vRot: rnd(-2, 2),
-      alpha: rnd(0.4, 0.75),
-      color: `hsl(${hue}, 60%, 75%)`
-    });
-  }
+// ==========================================
+// GLOSSY UI COMPONENTS (White text with dark outline)
+// ==========================================
+const BUTTON_THEMES = {
+  green: { top: '#6ee7b7', mid: '#22c55e', bot: '#16a34a', lip: '#14532d', border: '#052e16' },
+  blue: { top: '#93c5fd', mid: '#3b82f6', bot: '#2563eb', lip: '#1e3a8a', border: '#0f172a' },
+  purple: { top: '#d8b4fe', mid: '#a855f7', bot: '#9333ea', lip: '#581c87', border: '#3b0764' },
+  orange: { top: '#fed7aa', mid: '#f97316', bot: '#ea580c', lip: '#7c2d12', border: '#431407' },
+  red: { top: '#fca5a5', mid: '#ef4444', bot: '#dc2626', lip: '#7f1d1d', border: '#450a0a' },
+  gray: { top: '#e2e8f0', mid: '#94a3b8', bot: '#64748b', lip: '#334155', border: '#1e293b' }
+};
+
+function drawGlossyText(text, x, y, size, align = 'center', color = '#ffffff', strokeColor = '#0f172a', strokeWidth) {
+  ctx.save();
+  ctx.font = `800 ${size}px "Lilita One", "Baloo 2", cursive, system-ui, sans-serif`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+
+  const sw = strokeWidth !== undefined ? strokeWidth : Math.max(3.5, Math.round(size * 0.18));
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 2;
+
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = sw;
+  ctx.lineJoin = 'round';
+  ctx.miterLimit = 2;
+  ctx.strokeText(text, x, y);
+
+  ctx.shadowColor = 'transparent';
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+  ctx.restore();
 }
 
-// Start-up Loading Screen state (clean white, big car, orange progress bar over ~2.5s)
+function drawGlossyButton(x, y, w, h, theme, label, iconType, isPressed, radius = 18) {
+  const py = isPressed ? y + 3 : y;
+  const lipH = isPressed ? 2 : 5;
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+  ctx.shadowBlur = isPressed ? 4 : 8;
+  ctx.shadowOffsetY = isPressed ? 2 : 5;
+
+  ctx.fillStyle = theme.lip;
+  roundRect(ctx, x, py + lipH, w, h, radius);
+  ctx.fill();
+
+  ctx.shadowColor = 'transparent';
+
+  const grad = ctx.createLinearGradient(0, py, 0, py + h);
+  grad.addColorStop(0, theme.top);
+  grad.addColorStop(0.48, theme.mid);
+  grad.addColorStop(1, theme.bot);
+  ctx.fillStyle = grad;
+  roundRect(ctx, x, py, w, h, radius);
+  ctx.fill();
+
+  // White gloss band on top half
+  ctx.save();
+  roundRect(ctx, x, py, w, h, radius);
+  ctx.clip();
+  const glossGrad = ctx.createLinearGradient(0, py, 0, py + h * 0.54);
+  glossGrad.addColorStop(0, 'rgba(255, 255, 255, 0.65)');
+  glossGrad.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
+  ctx.fillStyle = glossGrad;
+  ctx.beginPath();
+  ctx.ellipse(x + w / 2, py + 2, w * 0.6, h * 0.45, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Inner highlight outline
+  ctx.save();
+  roundRect(ctx, x + 1.5, py + 1.5, w - 3, h - 3, Math.max(2, radius - 1));
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.lineWidth = 1.3;
+  ctx.stroke();
+  ctx.restore();
+
+  // Dark outer outline
+  ctx.strokeStyle = theme.border;
+  ctx.lineWidth = 2.4;
+  roundRect(ctx, x, py, w, h + (isPressed ? 1 : 2), radius);
+  ctx.stroke();
+
+  if (iconType) {
+    drawButtonIcon(iconType, x + w / 2, py + h / 2, Math.min(w, h) * 0.48);
+  }
+  if (label) {
+    const textY = py + h / 2 + 1;
+    drawGlossyText(label, x + w / 2, textY, Math.min(22, Math.round(h * 0.42)), 'center', '#ffffff', theme.border, 4.2);
+  }
+  ctx.restore();
+}
+
+function drawRoundGlossyButton(cx, cy, r, theme, iconType, isPressed) {
+  drawGlossyButton(cx - r, cy - r, r * 2, r * 2, theme, null, iconType, isPressed, r);
+}
+
+function drawButtonIcon(type, cx, cy, sz) {
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  if (type === 'gear') {
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 2;
+    for (let a = 0; a < 6; a++) {
+      ctx.rotate(Math.PI / 3);
+      ctx.fillRect(-sz * 0.16, -sz * 0.52, sz * 0.32, sz * 0.22);
+      ctx.strokeRect(-sz * 0.16, -sz * 0.52, sz * 0.32, sz * 0.22);
+    }
+    ctx.beginPath(); ctx.arc(0, 0, sz * 0.38, 0, 6.28); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#2563eb';
+    ctx.beginPath(); ctx.arc(0, 0, sz * 0.18, 0, 6.28); ctx.fill(); ctx.stroke();
+
+  } else if (type === 'car') {
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#3b0764';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-sz * 0.45, sz * 0.15);
+    ctx.lineTo(-sz * 0.35, -sz * 0.1);
+    ctx.lineTo(-sz * 0.1, -sz * 0.28);
+    ctx.lineTo(sz * 0.2, -sz * 0.28);
+    ctx.lineTo(sz * 0.4, -sz * 0.05);
+    ctx.lineTo(sz * 0.45, sz * 0.15);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath(); ctx.arc(-sz * 0.25, sz * 0.18, sz * 0.14, 0, 6.28); ctx.fill();
+    ctx.beginPath(); ctx.arc(sz * 0.25, sz * 0.18, sz * 0.14, 0, 6.28); ctx.fill();
+
+  } else if (type === 'close') {
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = sz * 0.22;
+    ctx.lineCap = 'round';
+    const s = sz * 0.32;
+    ctx.beginPath();
+    ctx.moveTo(-s, -s); ctx.lineTo(s, s);
+    ctx.moveTo(s, -s); ctx.lineTo(-s, s);
+    ctx.stroke();
+
+  } else if (type === 'sound_on') {
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#052e16';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-sz * 0.35, -sz * 0.15); ctx.lineTo(-sz * 0.15, -sz * 0.15); ctx.lineTo(sz * 0.1, -sz * 0.35);
+    ctx.lineTo(sz * 0.1, sz * 0.35); ctx.lineTo(-sz * 0.15, sz * 0.15); ctx.lineTo(-sz * 0.35, sz * 0.15);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(sz * 0.05, 0, sz * 0.24, -0.6, 0.6); ctx.stroke();
+    ctx.beginPath(); ctx.arc(sz * 0.05, 0, sz * 0.4, -0.7, 0.7); ctx.stroke();
+
+  } else if (type === 'sound_off') {
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-sz * 0.35, -sz * 0.15); ctx.lineTo(-sz * 0.15, -sz * 0.15); ctx.lineTo(sz * 0.1, -sz * 0.35);
+    ctx.lineTo(sz * 0.1, sz * 0.35); ctx.lineTo(-sz * 0.15, sz * 0.15); ctx.lineTo(-sz * 0.35, sz * 0.15);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-sz * 0.35, -sz * 0.35); ctx.lineTo(sz * 0.35, sz * 0.35); ctx.stroke();
+
+  } else if (type === 'vibrate_on') {
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#052e16';
+    ctx.lineWidth = 2;
+    roundRect(ctx, -sz * 0.2, -sz * 0.35, sz * 0.4, sz * 0.7, 4);
+    ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(-sz * 0.25, 0, sz * 0.25, Math.PI * 0.75, Math.PI * 1.25); ctx.stroke();
+    ctx.beginPath(); ctx.arc(sz * 0.25, 0, sz * 0.25, -Math.PI * 0.25, Math.PI * 0.25); ctx.stroke();
+
+  } else if (type === 'vibrate_off') {
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2;
+    roundRect(ctx, -sz * 0.2, -sz * 0.35, sz * 0.4, sz * 0.7, 4);
+    ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-sz * 0.35, -sz * 0.35); ctx.lineTo(sz * 0.35, sz * 0.35); ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawGoldStar(cx, cy, r) {
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 2;
+
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const ang = (i * Math.PI) / 5 - Math.PI / 2;
+    const rad = i % 2 === 0 ? r : r * 0.48;
+    const x = Math.cos(ang) * rad;
+    const y = Math.sin(ang) * rad;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+
+  const starGrad = ctx.createLinearGradient(0, -r, 0, r);
+  starGrad.addColorStop(0, '#fef08a');
+  starGrad.addColorStop(0.4, '#facc15');
+  starGrad.addColorStop(1, '#ca8a04');
+  ctx.fillStyle = starGrad;
+  ctx.fill();
+
+  ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = '#713f12';
+  ctx.lineWidth = 1.8;
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(-r * 0.2, -r * 0.25, r * 0.2, 0, 6.28);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawRibbonHeader(cx, cy, w, h, text, themeColor, starCount = 2) {
+  ctx.save();
+  const halfW = w / 2;
+  const tailW = 24;
+
+  ctx.fillStyle = themeColor.lip;
+  ctx.beginPath();
+  ctx.moveTo(cx - halfW, cy);
+  ctx.lineTo(cx - halfW - tailW, cy + 10);
+  ctx.lineTo(cx - halfW - tailW + 8, cy + h + 4);
+  ctx.lineTo(cx - halfW, cy + h);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(cx + halfW, cy);
+  ctx.lineTo(cx + halfW + tailW, cy + 10);
+  ctx.lineTo(cx + halfW + tailW - 8, cy + h + 4);
+  ctx.lineTo(cx + halfW, cy + h);
+  ctx.closePath();
+  ctx.fill();
+
+  const rGrad = ctx.createLinearGradient(0, cy, 0, cy + h);
+  rGrad.addColorStop(0, themeColor.top);
+  rGrad.addColorStop(0.5, themeColor.mid);
+  rGrad.addColorStop(1, themeColor.bot);
+  ctx.fillStyle = rGrad;
+  roundRect(ctx, cx - halfW, cy, w, h, 8);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+  ctx.fillRect(cx - halfW + 4, cy + 2, w - 8, h * 0.35);
+
+  ctx.strokeStyle = themeColor.border;
+  ctx.lineWidth = 2.4;
+  roundRect(ctx, cx - halfW, cy, w, h, 8);
+  ctx.stroke();
+
+  drawGlossyText(text, cx, cy + h / 2 + 1, 22, 'center', '#ffffff', themeColor.border, 4.5);
+
+  if (starCount >= 2) {
+    drawGoldStar(cx - halfW + 18, cy + h / 2, 11);
+    drawGoldStar(cx + halfW - 18, cy + h / 2, 11);
+  }
+
+  ctx.restore();
+}
+
+// Coin-Counter Pill with bold white text and dark outline
+function drawCoinPill(x, y, w, h, val, isBest = false) {
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 3;
+
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+  roundRect(ctx, x, y, w, h, h / 2);
+  ctx.fill();
+
+  ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.6;
+  roundRect(ctx, x, y, w, h, h / 2);
+  ctx.stroke();
+
+  const coinR = h * 0.58;
+  const coinX = x + h * 0.48;
+  const coinY = y + h * 0.5;
+
+  ctx.fillStyle = '#eab308';
+  ctx.beginPath(); ctx.arc(coinX, coinY, coinR, 0, 6.28); ctx.fill();
+  ctx.strokeStyle = '#713f12'; ctx.lineWidth = 1.5; ctx.stroke();
+  drawGoldStar(coinX, coinY, coinR * 0.65);
+
+  const label = isBest ? `BEST ${val}` : `${val}`;
+  drawGlossyText(label, x + (w + coinR) / 2 + 2, y + h / 2 + 1, 15, 'center', '#ffffff', '#0f172a', 3.8);
+
+  ctx.restore();
+}
+
+// ==========================================
+// GAME STATE & ASSETS
+// ==========================================
 let st = 'loading';
-let loadingTimer = 0;
-let loadingFade = 0;
-let loadingWheelRot = 0;
-const speedLines = [];
-for (let i = 0; i < 8; i++) {
-  speedLines.push({
-    x: rnd(20, 160),
-    y: rnd(-35, 30),
-    len: rnd(35, 75),
-    speed: rnd(240, 420),
-    alpha: rnd(0.25, 0.6),
-    w: rnd(1.2, 2.2)
-  });
-}
+let loadingTimer = 0, loadingFade = 0, loadingWheelRot = 0;
+let visualLoadProgress = 0;
+let loadDoneHoldTimer = 0;
+let menuFadeTimer = 0;
+let settingsOpen = false;
+let toastMsg = null;
+let toastTimer = 0;
 
-// Game State: 'loading', 'ready', 'play', 'level_complete', 'transition', 'dead'
 let curLevel = 1;
-let cam = 0, vy = 0, cy = CAR_REST_Y, hold = false;
+let cam = 0, vy = 0, cy = CAR_REST_Y, hold = false, thrust = 0;
 let segs = [], nextX = 0, lastC = H / 2, parts = [], deadAt = 0, last = 0;
 let best = 0;
 let wheelRot = 0;
 
-// Next Level Transition & Title Card state
 let transitionTimer = 0;
 let nextLevelTarget = 1;
-const TITLE_CARD_DURATION = 1.75; // ~0.25s fade to black + 1.5s title card
+const TITLE_CARD_DURATION = 1.75;
 
-// Finish ease-down & celebration state
 let stopping = false;
 let stopTimer = 0;
 let levelCompleteTimer = 0;
 let confettis = [];
+let activePress = null;
 
-try { best = +localStorage.getItem('skycarBest') || 0 } catch(e) {}
+try { best = +localStorage.getItem('skycarBest') || 0; } catch(e) {}
 
 function getDifficultyDistance() {
   const distInTunnel = Math.max(0, Math.min(LEVEL_LENGTH, (cam + CAR_X) - TUNNEL_START_X));
   return (curLevel - 1) * LEVEL_LENGTH + distInTunnel;
 }
 
-const speed = () => Math.min(MAX_SPEED, START_SPEED + getDifficultyDistance() / SPEED_DISTANCE_DIVISOR);
+// Resolution-independent scroll speed relative to canvas width W (multiplied by SPEED_MULTIPLIER)
+function scrollSpeed(difficultyDistance = getDifficultyDistance()) {
+  const baseSpeed = W * Math.min(0.55, 0.30 + difficultyDistance / (W * 120));
+  return baseSpeed * SPEED_MULTIPLIER;
+}
+const speed = scrollSpeed;
 
-function roundRect(ctx, x, y, w, h, r) {
-  if (w < 2 * r) r = w / 2;
-  if (h < 2 * r) r = h / 2;
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+function getGapHeight(d) {
+  const carH = CAR_HITBOX_H;
+  const lvlProgress = Math.max(0, Math.min(1, d / (9 * LEVEL_LENGTH)));
+  const factor = 3.8 - (3.8 - 2.6) * lvlProgress;
+  return Math.max(2.6 * carH, factor * carH);
+}
+
+function showToast(msg) {
+  toastMsg = msg;
+  toastTimer = 1.6;
+  playClickSound();
 }
 
 function pickClusterSize(d, levelRng) {
@@ -1050,7 +1091,7 @@ function makeSpikes(len, d, top, bot, noSpikes = false, levelRng) {
   }
   const topSpikes = gen();
   const botSpikes = gen();
-  const maxSpikeSum = (bot - top + 36) - 140; // Clearance gap between spike tips is never below 140 px
+  const maxSpikeSum = Math.max(0, (bot - top) - (CAR_HITBOX_H + 20));
   for (let i = 0; i < count; i++) {
     if (topSpikes[i].h + botSpikes[i].h > maxSpikeSum) {
       if (topSpikes[i].h >= botSpikes[i].h) {
@@ -1066,23 +1107,39 @@ function makeSpikes(len, d, top, bot, noSpikes = false, levelRng) {
 }
 
 let levelPRNG = mulberry32(1);
+let tunnelSegCount = 0;
 
 function addSeg(isOpen = false, forceLen) {
   const segDistInTunnel = Math.max(0, Math.min(LEVEL_LENGTH, nextX - TUNNEL_START_X));
   const d = (curLevel - 1) * LEVEL_LENGTH + segDistInTunnel;
-  const curSpd = Math.min(MAX_SPEED, START_SPEED + d / SPEED_DISTANCE_DIVISOR);
-  const gap = isOpen ? 400 : Math.max(140, 250 - d / 100);
-  let len = forceLen || Math.max(240, 320 - d / 120);
+
+  const isTunnel = !isOpen && nextX >= TUNNEL_START_X && nextX < TUNNEL_END_X;
+  const isExtraEasy = isTunnel && (tunnelSegCount < 3);
+  if (isTunnel) tunnelSegCount++;
+
+  const currentScrollSpeed = scrollSpeed(d);
+  const normalGap = getGapHeight(d);
+  const gap = isOpen ? 380 : (isExtraEasy ? 5 * CAR_HITBOX_H : normalGap);
+  const normalLen = forceLen || Math.max(240, 320 - d / 120);
+  let len = isExtraEasy ? Math.round(normalLen * 1.5) : normalLen;
   if (!isOpen && nextX + len > TUNNEL_END_X) {
     len = Math.max(60, TUNNEL_END_X - nextX);
   }
-  const maxShift = isOpen ? 20 : Math.min(70, 0.6 * MAX_UP_SPEED * (len / curSpd));
-  let c = isOpen ? H / 2 : (lastC + (levelPRNG() * 2 - 1) * maxShift);
+
+  // Vertical step between two neighboring segments never exceeds
+  // 0.6 * MAX_UP_SPEED * (segmentLength / currentScrollSpeed) using final speeds
+  const normalMaxShift = Math.min(0.5 * gap, 0.6 * MAX_UP_SPEED * (len / currentScrollSpeed));
+  // First 3 tunnel segments vertical step at most 25% of normal step
+  const maxShift = isOpen ? 15 : (isExtraEasy ? 0.25 * normalMaxShift : normalMaxShift);
+
+  let c = isOpen ? (ROAD_TOP - 20) : (lastC + (levelPRNG() * 2 - 1) * maxShift);
   c = Math.max(gap / 2 + 50, Math.min(H - gap / 2 - 50, c));
   lastC = c;
   const top = isOpen ? -300 : (c - gap / 2);
   const bot = isOpen ? (H + 300) : (c + gap / 2);
-  const { topSpikes, botSpikes } = makeSpikes(len, d, top, bot, isOpen, levelPRNG);
+
+  const noSpikes = isOpen;
+  const { topSpikes, botSpikes } = makeSpikes(len, d, top, bot, noSpikes, levelPRNG);
   segs.push({ x: nextX, w: len, top, bot, topSpikes, botSpikes, isOpen });
   nextX += len;
 }
@@ -1091,32 +1148,34 @@ function startLevel(lvl) {
   curLevel = lvl;
   cam = 0;
   vy = 0;
+  thrust = 0;
   cy = CAR_REST_Y;
-  lastC = H / 2;
+  lastC = ROAD_TOP - 20;
   parts = [];
   stopping = false;
   stopTimer = 0;
   levelCompleteTimer = 0;
   confettis = [];
+  tunnelSegCount = 0;
+  camSamples = [];
+  realSpeedWPerSec = 0;
+  realSpeedPxPerSec = 0;
 
-  // Seeded level setup
   const cfg = getLevelConfig(lvl);
-  prerenderLevelAssets(cfg);
+  prerenderSpikes(cfg);
+  prerenderFallbackScene(cfg);
 
   levelPRNG = mulberry32(hashInt(lvl * 55555 + 12345));
 
-  // 1. Initial open section covering start road platform (-50 to 470) and gap up to TUNNEL_START_X (650)
   const initW = TUNNEL_START_X - START_ROAD_START;
   const { topSpikes, botSpikes } = makeSpikes(initW, (curLevel - 1) * LEVEL_LENGTH, -300, H + 300, true, levelPRNG);
   segs = [{ x: START_ROAD_START, w: initW, top: -300, bot: H + 300, topSpikes, botSpikes, isOpen: true }];
   nextX = TUNNEL_START_X;
 
-  // 2. Tunnel segments from TUNNEL_START_X (650) to TUNNEL_END_X (1650)
   while (nextX < TUNNEL_END_X) {
     addSeg(false);
   }
 
-  // 3. Post-tunnel open section covering finish road platform and beyond
   const postW = (FINISH_ROAD_END + 500) - TUNNEL_END_X;
   const endSpikes = makeSpikes(postW, curLevel * LEVEL_LENGTH, -300, H + 300, true, levelPRNG);
   segs.push({ x: TUNNEL_END_X, w: postW, top: -300, bot: H + 300, topSpikes: endSpikes.topSpikes, botSpikes: endSpikes.botSpikes, isOpen: true });
@@ -1131,7 +1190,7 @@ function resetGame() {
 
 function initConfetti() {
   confettis = [];
-  const colors = ['#2ebd4a', '#ffd84d', '#38bdf8', '#ff4d6d', '#a78bfa', '#f37021', '#fb923c'];
+  const colors = ['#22c55e', '#facc15', '#38bdf8', '#f43f5e', '#a855f7', '#fb923c'];
   for (let i = 0; i < 75; i++) {
     confettis.push({
       x: rnd(10, W - 10),
@@ -1175,6 +1234,8 @@ function die() {
   st = 'dead';
   deadAt = performance.now();
   hold = false;
+  thrust = 0;
+  playCrashSound();
   const tunnelDist = Math.max(0, Math.min(LEVEL_LENGTH, (cam + CAR_X) - TUNNEL_START_X));
   const progress = tunnelDist / LEVEL_LENGTH;
   const curScore = Math.floor(progress * 100);
@@ -1185,174 +1246,97 @@ function die() {
   }
 }
 
-// Small man in black suit standing near end of platform
-function drawMan(x, feetY) {
-  if (x < -30 || x > W + 30) return;
-  ctx.save();
-  ctx.fillStyle = '#0a0a0c';
-  ctx.fillRect(x - 5, feetY - 3, 5, 3);
-  ctx.fillRect(x + 1, feetY - 3, 5, 3);
-
-  ctx.fillStyle = '#18191c';
-  ctx.fillRect(x - 4.5, feetY - 14, 4, 11);
-  ctx.fillRect(x + 1.5, feetY - 14, 4, 11);
-
-  ctx.fillStyle = '#151619';
-  ctx.fillRect(x - 6, feetY - 26, 13, 12);
-
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.moveTo(x - 2, feetY - 26);
-  ctx.lineTo(x + 3, feetY - 26);
-  ctx.lineTo(x + 0.5, feetY - 20);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = '#c8202a';
-  ctx.beginPath();
-  ctx.moveTo(x, feetY - 25);
-  ctx.lineTo(x + 1, feetY - 25);
-  ctx.lineTo(x + 1.2, feetY - 19);
-  ctx.lineTo(x + 0.5, feetY - 17.5);
-  ctx.lineTo(x - 0.2, feetY - 19);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = '#18191c';
-  ctx.fillRect(x - 8, feetY - 25, 2.5, 11);
-  ctx.fillRect(x + 6.5, feetY - 25, 2.5, 11);
-  ctx.fillStyle = '#f5cba7';
-  ctx.fillRect(x - 8, feetY - 14, 2.5, 2.5);
-  ctx.fillRect(x + 6.5, feetY - 14, 2.5, 2.5);
-
-  ctx.fillStyle = '#f5cba7';
-  ctx.beginPath();
-  ctx.arc(x + 0.5, feetY - 29, 4, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#101014';
-  ctx.beginPath();
-  ctx.arc(x + 0.5, feetY - 30.5, 4.2, Math.PI, Math.PI * 2);
-  ctx.fill();
-  ctx.fillRect(x - 3.7, feetY - 31, 2, 3);
-
-  ctx.fillStyle = '#050507';
-  ctx.fillRect(x - 2.5, feetY - 30, 6, 2);
-  ctx.restore();
-}
-
-// Draw thick 3-layer bridge platform (Asphalt Top, Red Deck Edge, Steel Truss) with optional flags and lights for finish platform
+// 3-layer cartoon road platform with red deck edge and soft shadow
 function drawRoadPlatform(startX, endX, roadTop, isFinish = false) {
   const w = endX - startX;
   if (w <= 0) return;
   const x = startX - cam;
   if (x + w < -60 || x > W + 60) return;
 
-  const roadBottom = roadTop + 57;
+  const bandH = 36; // 36 px tall asphalt band
+  const roadCenterY = roadTop + bandH / 2; // middle: roadTop + 18
+  const roadBottom = roadTop + bandH; // roadTop + 36
+  const trussBottom = roadBottom + 20;
 
   ctx.save();
+  // Soft drop shadow under platform
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.45)';
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetY = 4;
+
   ctx.beginPath();
-  ctx.moveTo(x - 20, roadTop - 2);
-  ctx.lineTo(x + w, roadTop - 2);
-  ctx.lineTo(x + w - 12, roadBottom + 2);
-  ctx.lineTo(x - 20, roadBottom + 2);
+  ctx.moveTo(x - 20, roadTop - 4);
+  ctx.lineTo(x + w, roadTop - 4);
+  ctx.lineTo(x + w - 12, trussBottom + 2);
+  ctx.lineTo(x - 20, trussBottom + 2);
   ctx.closePath();
   ctx.clip();
 
-  // 1. ASPHALT TOP (28 px tall)
+  // 1. Asphalt Road Surface (frames car in the middle of the road, 36px tall band)
   ctx.fillStyle = '#26282c';
-  ctx.fillRect(x, roadTop, w, 28);
-  ctx.fillStyle = '#c8202a';
-  ctx.fillRect(x, roadTop, w, 2);
+  ctx.fillRect(x, roadTop, w, bandH);
 
-  // White dashed lane markings
-  ctx.fillStyle = '#e9e9e9';
+  // 2. Upper Red Deck Edge / Barrier (symmetrical border)
+  ctx.fillStyle = '#dc2626';
+  ctx.fillRect(x, roadTop - 2, w, 3);
+  ctx.fillStyle = '#f87171';
+  ctx.fillRect(x, roadTop - 2, w, 1);
+
+  // 3. Yellow Dashed Center Lane Markings (runs right through middle of road at wheel-hub height)
+  ctx.fillStyle = '#fde047';
   const startDash = Math.floor(startX / 48) * 48;
   for (let wx = startDash; wx < endX + 48; wx += 48) {
     const dx = wx - cam;
-    ctx.fillRect(dx, roadTop + 14, 22, 4);
+    ctx.fillRect(dx, roadCenterY - 1.5, 22, 3);
   }
 
-  // 2. RED DECK EDGE (7 px tall)
-  ctx.fillStyle = '#e0262f';
-  ctx.fillRect(x, roadTop + 28, w, 7);
-  ctx.fillStyle = '#ff6b6b';
-  ctx.fillRect(x, roadTop + 28, w, 1);
-  ctx.fillStyle = '#8f1218';
-  ctx.fillRect(x, roadTop + 34, w, 1);
+  // 4. Lower Red Deck Edge (front edge of the road, below tires at roadBottom - 2 = roadTop + 34)
+  ctx.fillStyle = '#dc2626';
+  ctx.fillRect(x, roadBottom - 2, w, 4);
+  ctx.fillStyle = '#f87171';
+  ctx.fillRect(x, roadBottom - 2, w, 1.2);
 
-  // 3. STEEL TRUSS (22 px tall)
-  ctx.fillStyle = '#1d1f23';
-  ctx.fillRect(x, roadTop + 35, w, 22);
-  ctx.fillStyle = '#c8202a';
-  ctx.fillRect(x, roadTop + 35, w, 2);
-  ctx.fillRect(x, roadTop + 55, w, 2);
+  // 5. Steel Truss structure underneath (below tires)
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(x, roadBottom + 2, w, 18);
 
-  ctx.strokeStyle = '#4a4e55';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 2.5;
   ctx.beginPath();
   const startTruss = Math.floor(startX / 40) * 40;
   for (let wx = startTruss; wx < endX + 40; wx += 40) {
     const p1 = wx - cam, p2 = wx + 40 - cam;
-    ctx.moveTo(p1, roadTop + 37); ctx.lineTo(p2, roadTop + 55);
-    ctx.moveTo(p2, roadTop + 37); ctx.lineTo(p1, roadTop + 55);
+    ctx.moveTo(p1, roadBottom + 3); ctx.lineTo(p2, roadBottom + 19);
+    ctx.moveTo(p2, roadBottom + 3); ctx.lineTo(p1, roadBottom + 19);
   }
   ctx.stroke();
 
-  for (let wx = startTruss; wx <= endX + 40; wx += 40) {
-    const px = wx - cam;
-    ctx.fillStyle = '#3a3d43';
-    ctx.fillRect(px - 3, roadTop + 35, 6, 22);
-    ctx.fillStyle = '#656b76';
-    ctx.fillRect(px - 3, roadTop + 35, 6, 2.5);
-    ctx.fillRect(px - 3, roadTop + 54.5, 6, 2.5);
-  }
-
-  ctx.restore();
-
-  ctx.save();
-  ctx.strokeStyle = '#3a3d43';
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.moveTo(x + w, roadTop);
-  ctx.lineTo(x + w - 12, roadBottom);
-  ctx.stroke();
-
-  ctx.fillStyle = '#c8202a';
-  ctx.fillRect(x + w - 2, roadTop, 2, 2);
-  ctx.fillStyle = '#e0262f';
-  ctx.fillRect(x + w - 6, roadTop + 28, 3, 7);
-  ctx.fillStyle = '#c8202a';
-  ctx.fillRect(x + w - 13, roadTop + 55, 3, 2);
   ctx.restore();
 
   if (isFinish) {
     ctx.save();
-    const cfg = curConfig || { H: 200, accentColor: '#38bdf8' };
-    const accent = cfg.accentColor || `hsl(${cfg.H}, 80%, 50%)`;
-    const lightCol = `hsl(${cfg.H}, 90%, 70%)`;
-
+    const cfg = curConfig;
     const postPositions = [startX + 80, startX + 220, startX + 360, startX + 460];
     for (const wx of postPositions) {
       if (wx >= startX && wx <= endX) {
         const px = wx - cam;
         if (px > -30 && px < W + 30) {
-          ctx.fillStyle = '#4a4e55';
-          ctx.fillRect(px - 1.5, roadTop - 42, 3, 42);
+          ctx.fillStyle = '#64748b';
+          ctx.fillRect(px - 2, roadTop - 42, 4, 42);
 
-          ctx.shadowColor = lightCol;
-          ctx.shadowBlur = 8;
-          ctx.fillStyle = lightCol;
+          ctx.fillStyle = '#facc15';
+          ctx.shadowColor = '#facc15';
+          ctx.shadowBlur = 10;
           ctx.beginPath();
-          ctx.arc(px, roadTop - 42, 3.5, 0, 6.28);
+          ctx.arc(px, roadTop - 42, 4.5, 0, 6.28);
           ctx.fill();
           ctx.shadowBlur = 0;
 
-          ctx.fillStyle = accent;
+          ctx.fillStyle = cfg.accentColor;
           ctx.beginPath();
-          ctx.moveTo(px + 1.5, roadTop - 38);
-          ctx.lineTo(px + 22, roadTop - 30);
-          ctx.lineTo(px + 1.5, roadTop - 22);
+          ctx.moveTo(px + 2, roadTop - 38);
+          ctx.lineTo(px + 24, roadTop - 30);
+          ctx.lineTo(px + 2, roadTop - 22);
           ctx.closePath();
           ctx.fill();
         }
@@ -1362,48 +1346,449 @@ function drawRoadPlatform(startX, endX, roadTop, isFinish = false) {
   }
 }
 
+// Thin studded rails with rivets, end caps and soft shadow for high contrast on bright sky
+function drawWall(s, x) {
+  const cfg = curConfig;
+  const w = s.w + 1;
+  drawRailSegment(x, s.top - 28, w, true, cfg);
+  drawRailSegment(x, s.bot + 18, w, false, cfg);
+}
+
+function drawRailSegment(x, y, w, isCeiling, cfg) {
+  ctx.save();
+  // Soft shadow so rails stand out clearly against bright sky picture
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.45)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = isCeiling ? -2 : 3;
+
+  const railGrad = ctx.createLinearGradient(0, y, 0, y + 10);
+  railGrad.addColorStop(0, '#ffffff');
+  railGrad.addColorStop(0.25, cfg.railColor || '#64748b');
+  railGrad.addColorStop(0.8, cfg.railColor || '#64748b');
+  railGrad.addColorStop(1, '#0f172a');
+  ctx.fillStyle = railGrad;
+  ctx.fillRect(x, y, w, 10);
+
+  ctx.shadowColor = 'transparent';
+
+  // Highlight and dark outlines
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+  ctx.fillRect(x, y, w, 1.5);
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+  ctx.fillRect(x, y + 8.5, w, 1.5);
+
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(x - 1, y - 1, 3, 12);
+  ctx.fillRect(x + w - 2, y - 1, 3, 12);
+
+  const centerY = y + 5;
+  const startRivet = Math.floor(x / 16) * 16;
+  for (let rx = startRivet; rx <= x + w + 16; rx += 16) {
+    if (rx < x + 3 || rx > x + w - 3) continue;
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath(); ctx.arc(rx, centerY, 2.2, 0, 6.28); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(rx - 0.6, centerY - 0.6, 1, 0, 6.28); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawVerticalRailConnector(x, y1, y2, cfg) {
+  const minY = Math.min(y1, y2);
+  const maxY = Math.max(y1, y2) + 10;
+  const h = maxY - minY;
+  if (h <= 10) return;
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.45)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetX = 1;
+  ctx.shadowOffsetY = 1;
+
+  const railGrad = ctx.createLinearGradient(x - 5, 0, x + 5, 0);
+  railGrad.addColorStop(0, '#ffffff');
+  railGrad.addColorStop(0.25, cfg.railColor || '#64748b');
+  railGrad.addColorStop(0.8, cfg.railColor || '#64748b');
+  railGrad.addColorStop(1, '#0f172a');
+  ctx.fillStyle = railGrad;
+  ctx.fillRect(x - 5, minY, 10, h);
+
+  ctx.shadowColor = 'transparent';
+
+  // Highlight and dark outlines
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+  ctx.fillRect(x - 5, minY, 1.5, h);
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+  ctx.fillRect(x + 3.5, minY, 1.5, h);
+
+  // End caps
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(x - 6, minY - 1, 12, 3);
+  ctx.fillRect(x - 6, maxY - 2, 12, 3);
+
+  // Rivets spaced every 16px along the vertical connector
+  const centerX = x;
+  const startRivetY = Math.floor(minY / 16) * 16;
+  for (let ry = startRivetY; ry <= maxY + 16; ry += 16) {
+    if (ry < minY + 4 || ry > maxY - 4) continue;
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath(); ctx.arc(centerX, ry, 2.2, 0, 6.28); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(centerX - 0.6, ry - 0.6, 1, 0, 6.28); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawSpike(x, baseY, isTop, sp) {
+  if (!sp || !sp.h || sp.h <= 0) return;
+  const key = `${sp.size}_${isTop ? 'top' : 'bot'}`;
+  const spr = spikeCanvases[key];
+  if (spr) {
+    ctx.save();
+    // Soft shadow behind spike so it pops from bright sky picture
+    ctx.shadowColor = 'rgba(15, 23, 42, 0.35)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = isTop ? 2 : -2;
+    if (isTop) {
+      ctx.drawImage(spr, x + 6 - 18, baseY - 2);
+    } else {
+      ctx.drawImage(spr, x + 6 - 18, baseY - 46);
+    }
+    ctx.restore();
+  }
+}
+
+// High-performance sports car wheel with realistic rubber tyre, stationary brake caliper & rotating chrome twin-spoke alloy rim
+function drawSportsWheel(cx, cy, r, angle) {
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // 1. Solid Tyre (Deep matte black rubber with realistic sidewall contour)
+  ctx.fillStyle = '#0f1115';
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tyre outer edge definition
+  ctx.strokeStyle = '#090a0d';
+  ctx.lineWidth = Math.max(1, r * 0.05);
+  ctx.beginPath();
+  ctx.arc(0, 0, r - ctx.lineWidth / 2, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Subtle tyre sidewall highlight band
+  ctx.strokeStyle = '#262a33';
+  ctx.lineWidth = Math.max(1, r * 0.08);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.88, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Inner tyre bead line
+  ctx.strokeStyle = '#090a0d';
+  ctx.lineWidth = Math.max(0.8, r * 0.04);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.77, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 2. Wheel Cavity / Rim Barrel (Dark interior background behind spokes)
+  ctx.fillStyle = '#14161a';
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.73, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 3. Stationary Brake Assembly (Realistic: Caliper and Rotor do NOT spin with wheel)
+  // Brake disc rotor (brushed steel)
+  ctx.fillStyle = '#64748b';
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.56, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Brake rotor groove ring
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = Math.max(0.6, r * 0.035);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.44, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // High-performance Red Sports Brake Caliper (stationary at top quadrant)
+  ctx.save();
+  ctx.rotate(-0.58);
+  ctx.fillStyle = '#dc2626';
+  ctx.beginPath();
+  const calW = r * 0.22;
+  const calH = r * 0.38;
+  const calX = r * 0.36;
+  const calY = -calH / 2;
+  if (ctx.roundRect) {
+    ctx.roundRect(calX, calY, calW, calH, r * 0.05);
+  } else {
+    ctx.rect(calX, calY, calW, calH);
+  }
+  ctx.fill();
+  // Caliper highlight bolt
+  ctx.fillStyle = '#f8fafc';
+  ctx.beginPath();
+  ctx.arc(calX + calW / 2, 0, Math.max(0.8, r * 0.035), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // 4. Rotating Alloy Rim Lip & Spokes
+  ctx.save();
+  ctx.rotate(angle);
+
+  // Outer chrome rim lip
+  ctx.strokeStyle = '#f1f5f9';
+  ctx.lineWidth = Math.max(1.2, r * 0.065);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.71, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Inner chrome bevel
+  ctx.strokeStyle = '#94a3b8';
+  ctx.lineWidth = Math.max(0.8, r * 0.03);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.67, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 5 Twin-Spoke High Performance Alloy Wheels (10 blades)
+  const numPairs = 5;
+  const innerR = r * 0.19;
+  const outerR = r * 0.67;
+  const spokeWidth = Math.max(1.2, r * 0.055);
+  const splitOffset = 0.13;
+
+  ctx.lineWidth = spokeWidth;
+  ctx.lineCap = 'round';
+
+  for (let i = 0; i < numPairs; i++) {
+    const baseAng = (i * Math.PI * 2) / numPairs;
+
+    for (const sign of [-1, 1]) {
+      const spkAng = baseAng + sign * splitOffset;
+      const cosA = Math.cos(spkAng);
+      const sinA = Math.sin(spkAng);
+
+      // Shaded metallic side
+      ctx.strokeStyle = '#64748b';
+      ctx.beginPath();
+      ctx.moveTo(cosA * innerR + sign * 0.4, sinA * innerR);
+      ctx.lineTo(cosA * outerR + sign * 0.4, sinA * outerR);
+      ctx.stroke();
+
+      // Bright polished chrome face
+      ctx.strokeStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.moveTo(cosA * innerR, sinA * innerR);
+      ctx.lineTo(cosA * outerR, sinA * outerR);
+      ctx.stroke();
+    }
+  }
+
+  // 5. Central Wheel Hub & Lug Nuts
+  // Chrome outer hub
+  ctx.fillStyle = '#cbd5e1';
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = Math.max(0.6, r * 0.03);
+  ctx.stroke();
+
+  // Center cap badge
+  ctx.fillStyle = '#0f172a';
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.13, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#f8fafc';
+  ctx.beginPath();
+  ctx.arc(0, 0, Math.max(0.7, r * 0.04), 0, Math.PI * 2);
+  ctx.fill();
+
+  // 5 Chrome Lug Nuts
+  ctx.fillStyle = '#f8fafc';
+  for (let l = 0; l < 5; l++) {
+    const lugAng = (l * Math.PI * 2) / 5 + 0.31;
+    const lx = Math.cos(lugAng) * (r * 0.175);
+    const ly = Math.sin(lugAng) * (r * 0.175);
+    ctx.beginPath();
+    ctx.arc(lx, ly, Math.max(0.6, r * 0.026), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore(); // Restore wheel rotation
+  ctx.restore(); // Restore wheel translation
+}
+
+// 1993 McLaren F1 supercar body with crisp outline & soft shadow
+function renderCarBody(drawWheelAngle = wheelRot) {
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(-33, 6, 68, 4);
+
+  const bodyGrad = ctx.createLinearGradient(0, -12, 0, 8);
+  bodyGrad.addColorStop(0, '#fef08a');
+  bodyGrad.addColorStop(0.45, '#facc15');
+  bodyGrad.addColorStop(1, '#eab308');
+  ctx.fillStyle = bodyGrad;
+
+  ctx.beginPath();
+  ctx.moveTo(37, 7);
+  ctx.lineTo(35, 2);
+  ctx.lineTo(26, -2);
+  ctx.lineTo(12, -6);
+  ctx.lineTo(-2, -10.5);
+  ctx.lineTo(-14, -10.5);
+  ctx.lineTo(-24, -6.5);
+  ctx.lineTo(-33, -3);
+  ctx.lineTo(-34, 7);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+
+  ctx.fillStyle = '#0f172a';
+  ctx.beginPath();
+  ctx.moveTo(-4, -10.5); ctx.lineTo(-2, -13.5); ctx.lineTo(-13, -13.5); ctx.lineTo(-15, -10.5);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1.2; ctx.stroke();
+
+  ctx.fillStyle = '#1e293b';
+  ctx.beginPath();
+  ctx.moveTo(-1, -9.5); ctx.lineTo(10, -5.5); ctx.lineTo(12, -2.5); ctx.lineTo(-12, -2.5); ctx.lineTo(-18, -6);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)'; ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(8, -5); ctx.lineTo(-1, -8.5); ctx.lineTo(-14, -6); ctx.stroke();
+
+  ctx.fillStyle = '#ca8a04';
+  ctx.fillRect(-7, 2, 18, 3.5);
+
+  ctx.fillStyle = '#fef08a';
+  ctx.beginPath(); ctx.arc(31, 1, 2.5, 0, 6.28); ctx.fill();
+
+  ctx.fillStyle = '#ef4444';
+  ctx.fillRect(-34, 1, 2.5, 4);
+
+  for (const wx of [-20, 21]) {
+    drawSportsWheel(wx, 8, 7.5, drawWheelAngle);
+  }
+}
+
+function car(drawX = CAR_X) {
+  const drawW = CAR_DRAW_W;
+  const drawH = CAR_DRAW_H;
+
+  // Soft dark ground shadow under the car tires
+  ctx.save();
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.28)';
+  ctx.beginPath();
+  ctx.ellipse(drawX, cy + drawH / 2 - 2, drawW * 0.42, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Draw car with slight tilt with vertical speed
+  ctx.save();
+  ctx.translate(drawX, cy);
+  const tilt = Math.max(-0.14, Math.min(0.14, vy / 400));
+  ctx.rotate(tilt);
+
+  if (trimmedCarCanvas) {
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.drawImage(trimmedCarCanvas, -drawW / 2, -drawH / 2, drawW, drawH);
+
+    // Dynamic rotating sports wheels (perfectly aligned with sports car wheel arches)
+    const rearX = -drawW / 2 + drawW * 0.1843;
+    const frontX = -drawW / 2 + drawW * 0.8190;
+    const wheelY = -drawH / 2 + drawH * 0.7026;
+    const wheelR = drawH * 0.2908;
+
+    drawSportsWheel(rearX, wheelY, wheelR, wheelRot);
+    drawSportsWheel(frontX, wheelY, wheelR, wheelRot);
+  } else {
+    // Fallback to drawn car if image fails to load
+    ctx.scale(CAR_SCALE, CAR_SCALE);
+    renderCarBody(wheelRot);
+  }
+  ctx.restore();
+}
+
+// Background drawing: uses attached bright picture, seamless mirrored tiling, 15% parallax scroll
+function drawBackground() {
+  const pic = getLevelPicture(curLevel);
+
+  if (pic && pic.seamlessCanvas) {
+    // 1. Picture is bright and fully visible, with no dark overlay on top of it.
+    // 2. Scaled to full canvas height (640), keeping aspect ratio.
+    // 3. Scroll slowly from right to left behind the game at 15% of world scroll speed.
+    // 4. Mirrored (flipped) copy next to it avoids visible seam when it loops.
+    const unitW = pic.unitW;
+    const scrollX = cam * 0.15;
+    const relX = -((scrollX % unitW + unitW) % unitW);
+
+    ctx.drawImage(pic.seamlessCanvas, relX, 0);
+    if (relX + unitW < W) {
+      ctx.drawImage(pic.seamlessCanvas, relX + unitW, 0);
+    }
+    if (relX > 0) {
+      ctx.drawImage(pic.seamlessCanvas, relX - unitW, 0);
+    }
+  } else {
+    // Graceful fallback to procedural scene if picture fails to load
+    if (fallbackBgCanvas) {
+      ctx.drawImage(fallbackBgCanvas, 0, 0);
+    } else {
+      ctx.fillStyle = '#48cae4';
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+}
+
+// ==========================================
+// GAME LOOP (STEP & DRAW)
+// ==========================================
 function step(dt) {
   const sp = speed();
-
-  // Background atmospheric particles drift
-  for (const ap of atmoParts) {
-    ap.phase += dt * 1.5;
-    ap.rot += ap.vRot * dt;
-    ap.x += ap.vx * dt - sp * 0.12 * dt;
-    ap.y += ap.vy * dt + Math.sin(ap.phase) * 6 * dt;
-
-    if (ap.x < -15) ap.x += W + 30;
-    if (ap.x > W + 15) ap.x -= W + 30;
-    if (ap.y < -15) ap.y += H + 30;
-    if (ap.y > H + 15) ap.y -= H + 30;
+  if (toastTimer > 0) {
+    toastTimer -= dt;
+    if (toastTimer <= 0) toastMsg = null;
   }
 
   if (st === 'loading') {
-    try {
-      loadingTimer += dt;
-      loadingWheelRot += dt * 14;
+    loadingTimer += dt;
+    loadingWheelRot += dt * 14;
 
-      for (const sl of speedLines) {
-        sl.x -= sl.speed * dt;
-        if (sl.x < -140) {
-          sl.x = rnd(60, 140);
-          sl.y = rnd(-35, 30);
-          sl.len = rnd(35, 75);
-          sl.speed = rnd(240, 420);
-          sl.alpha = rnd(0.25, 0.6);
-        }
-      }
+    const MIN_LOAD_TIME = 2.5;
+    const HARD_TIMEOUT = 6.0;
 
-      if (loadingTimer >= 2.5) {
+    // Smooth ease-out progress curve from 0 to 100% over at least 2.5s
+    const animT = Math.min(1, loadingTimer / MIN_LOAD_TIME);
+    const easeOutProgress = 1 - Math.pow(1 - animT, 2.4);
+
+    const isAssetsLoaded = assetsReady || (loadingTimer >= HARD_TIMEOUT);
+
+    if (isAssetsLoaded) {
+      visualLoadProgress = Math.max(visualLoadProgress, easeOutProgress);
+    } else {
+      // If assets take longer than 2.5s, keep waiting while capping at 99%
+      visualLoadProgress = Math.min(0.99, Math.max(visualLoadProgress, easeOutProgress));
+    }
+
+    // When progress reaches 100% and assets are ready (or hard timeout)
+    if (visualLoadProgress >= 1 && isAssetsLoaded) {
+      visualLoadProgress = 1;
+      loadDoneHoldTimer += dt;
+      // Show "100%" for 0.3 seconds, then fade out in 0.4 seconds
+      if (loadDoneHoldTimer >= 0.3) {
         loadingFade += dt / 0.4;
-        if (loadingFade >= 1 || loadingTimer >= 3.2) {
+        if (loadingFade >= 1) {
           st = 'ready';
+          menuFadeTimer = 0;
         }
       }
-
-      if (loadingTimer > 3.5) st = 'ready';
-    } catch(err) {
-      st = 'ready';
     }
     return;
   }
@@ -1411,34 +1796,23 @@ function step(dt) {
   if (st === 'ready') {
     cy = CAR_REST_Y;
     vy = 0;
+    thrust = 0;
     cam = 0;
+    menuFadeTimer += dt;
   } else if (st === 'transition') {
     transitionTimer += dt;
-
     if (transitionTimer >= 0.25 && curLevel !== nextLevelTarget) {
       startLevel(nextLevelTarget);
       hold = false;
+      thrust = 0;
     }
-
     if (transitionTimer >= 0.25) {
-      const sp = speed();
       cam += sp * dt;
       cy = CAR_REST_Y;
       vy = 0;
+      thrust = 0;
       wheelRot += sp * dt * (0.16 / CAR_SCALE);
-      if (Math.random() < 0.35) {
-        parts.push({
-          x: CAR_X - 22 * CAR_SCALE,
-          y: cy + 15 * CAR_SCALE,
-          vx: rnd(-50, -20),
-          vy: rnd(-8, -2),
-          l: 0,
-          m: rnd(0.2, 0.35),
-          isSmoke: true
-        });
-      }
     }
-
     if (transitionTimer >= TITLE_CARD_DURATION) {
       st = 'play';
       hold = false;
@@ -1449,6 +1823,7 @@ function step(dt) {
     if (wx >= FINISH_ROAD_X + 40 && !stopping) {
       stopping = true;
       stopTimer = 0;
+      playWinSound();
     }
 
     let ease = 1;
@@ -1469,14 +1844,22 @@ function step(dt) {
     const effectiveSp = sp * ease;
     cam += effectiveSp * dt;
 
-    // Flight physics: gentle, floaty movement
-    // Holding: vy -= LIFT_ACCEL * dt. Not holding: vy += GRAVITY * dt. Clamp vy between -MAX_UP_SPEED and +MAX_DOWN_SPEED.
-    if (hold) vy -= LIFT_ACCEL * dt;
-    else vy += GRAVITY * dt;
+    if (SHOW_DEBUG) {
+      updateRealSpeedMeasurement(performance.now() / 1000);
+    }
+
+    if (hold) {
+      thrust = Math.min(1, thrust + dt / THRUST_RISE_TIME);
+    } else {
+      thrust = Math.max(0, thrust - dt / THRUST_FALL_TIME);
+    }
+
+    const vertAccel = -LIFT_ACCEL * thrust + GRAVITY * (1 - thrust);
+    vy += vertAccel * dt;
+    vy *= Math.exp(-AIR_DRAG * dt);
     vy = Math.max(-MAX_UP_SPEED, Math.min(MAX_DOWN_SPEED, vy));
     cy += vy * dt;
 
-    // Road floor physics (keep wheels resting on the asphalt)
     const onStartPlatform = (wx >= START_ROAD_START && wx <= START_ROAD_END);
     const onFinishPlatform = (wx >= FINISH_ROAD_X && wx <= FINISH_ROAD_END);
     const onRoadPlatform = onStartPlatform || onFinishPlatform;
@@ -1485,6 +1868,7 @@ function step(dt) {
       if (!hold && cy >= CAR_REST_Y) {
         cy = CAR_REST_Y;
         vy = 0;
+        thrust = 0;
       } else if (cy > CAR_REST_Y) {
         cy = CAR_REST_Y;
         if (vy > 0) vy = 0;
@@ -1494,35 +1878,26 @@ function step(dt) {
     if (cy < 16) { cy = 16; vy = 0; }
     if (cy > H - 16) { cy = H - 16; vy = 0; }
 
-    if (onRoadPlatform && cy >= CAR_REST_Y - 0.5 && effectiveSp > 0) {
+    if (effectiveSp > 0) {
       wheelRot += effectiveSp * dt * (0.16 / CAR_SCALE);
-      if (Math.random() < 0.35) {
-        parts.push({
-          x: CAR_X - 22 * CAR_SCALE,
-          y: cy + 15 * CAR_SCALE,
-          vx: rnd(-50, -20),
-          vy: rnd(-8, -2),
-          l: 0,
-          m: rnd(0.2, 0.35),
-          isSmoke: true
-        });
-      }
-    } else if (effectiveSp > 0) {
-      wheelRot += effectiveSp * dt * (0.1 / CAR_SCALE);
     }
 
-    // Vertical wheel thruster smoke (scaled by CAR_SCALE, under the wheels)
-    if (hold && st === 'play') {
-      for (const ox of [-20 * CAR_SCALE, 21 * CAR_SCALE]) {
+    if ((hold || thrust > 0.05) && st === 'play') {
+      const drawW = CAR_DRAW_W;
+      const drawH = CAR_DRAW_H;
+      const rearWheelOx = -drawW / 2 + drawW * 0.1843;
+      const frontWheelOx = -drawW / 2 + drawW * 0.8190;
+      const smokeY = cy + drawH / 2;
+
+      for (const ox of [rearWheelOx, frontWheelOx]) {
         parts.push({
           x: CAR_X + ox,
-          y: cy + 14 * CAR_SCALE,
+          y: smokeY,
           vx: rnd(-3, 3) - effectiveSp * 0.15,
           vy: rnd(140, 230),
           l: 0,
-          m: rnd(0.32, 0.52),
-          size: rnd(3.5, 6.5) * (CAR_SCALE * 0.6),
-          isSmoke: true
+          m: rnd(0.3, 0.45),
+          size: rnd(4, 7) * (CAR_SCALE * 0.6)
         });
       }
     }
@@ -1530,7 +1905,6 @@ function step(dt) {
     if (nextX < cam + W + 400) addSeg(true, 400);
     while (segs.length && segs[0].x + segs[0].w < cam - 100) segs.shift();
 
-    // Collision check against spikes and thin rails (scaled hitbox by CAR_SCALE)
     for (const s of segs) {
       if (wx + HITBOX_HALF_W > s.x && wx - HITBOX_HALF_W < s.x + s.w && !s.isOpen) {
         if (cy - HITBOX_TOP_OFFSET < s.top - 18 || cy + HITBOX_BOT_OFFSET > s.bot + 18) { die(); break; }
@@ -1561,801 +1935,768 @@ function step(dt) {
   parts = parts.filter(p => p.l < p.m);
 }
 
-// 1993 McLaren F1 supercar body rendering with outline for contrast
-function renderCarBody(drawWheelAngle = wheelRot, withOutline = true) {
-  // Carbon fiber splitter & diffuser
-  ctx.fillStyle = '#141518';
-  ctx.fillRect(-33, 6, 68, 4);
-  ctx.fillRect(32, 6, 6, 3);
-  ctx.fillRect(-35, 6, 5, 4);
-
-  // Papaya Orange aerodynamic body
-  const bodyGrad = ctx.createLinearGradient(0, -12, 0, 8);
-  bodyGrad.addColorStop(0, '#ff8d24');
-  bodyGrad.addColorStop(0.5, '#f37021');
-  bodyGrad.addColorStop(1, '#c85008');
-  ctx.fillStyle = bodyGrad;
-
-  ctx.beginPath();
-  ctx.moveTo(37, 7);
-  ctx.lineTo(35, 2);
-  ctx.lineTo(26, -2);
-  ctx.lineTo(12, -6);
-  ctx.lineTo(-2, -10.5);
-  ctx.lineTo(-14, -10.5);
-  ctx.lineTo(-24, -6.5);
-  ctx.lineTo(-33, -3);
-  ctx.lineTo(-34, 7);
-  ctx.closePath();
-  ctx.fill();
-  if (withOutline) {
-    ctx.strokeStyle = '#181a1e';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
-
-  // Roof Air Scoop
-  ctx.fillStyle = '#16181c';
-  ctx.beginPath();
-  ctx.moveTo(-4, -10.5);
-  ctx.lineTo(-2, -13.5);
-  ctx.lineTo(-13, -13.5);
-  ctx.lineTo(-15, -10.5);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = '#ff7700';
-  ctx.fillRect(-3, -13, 2, 2);
-  if (withOutline) {
-    ctx.strokeStyle = '#181a1e';
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
-  }
-
-  // Cockpit canopy and side windows
-  ctx.fillStyle = '#111317';
-  ctx.beginPath();
-  ctx.moveTo(-1, -9.5);
-  ctx.lineTo(10, -5.5);
-  ctx.lineTo(12, -2.5);
-  ctx.lineTo(-12, -2.5);
-  ctx.lineTo(-18, -6);
-  ctx.closePath();
-  ctx.fill();
-  if (withOutline) {
-    ctx.strokeStyle = '#181a1e';
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
-  }
-  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(8, -5);
-  ctx.lineTo(-1, -8.5);
-  ctx.lineTo(-14, -6);
-  ctx.stroke();
-
-  // Scalloped Side Intake
-  ctx.fillStyle = '#9e3c06';
-  ctx.beginPath();
-  ctx.moveTo(-7, 2);
-  ctx.lineTo(12, 2);
-  ctx.lineTo(4, 5);
-  ctx.lineTo(-10, 5);
-  ctx.closePath();
-  ctx.fill();
-
-  // Glass headlights
-  ctx.fillStyle = '#ffeaa7';
-  ctx.beginPath();
-  ctx.moveTo(27, -1);
-  ctx.lineTo(33, 2);
-  ctx.lineTo(28, 2);
-  ctx.closePath();
-  ctx.fill();
-
-  // Tail lights
-  ctx.fillStyle = '#ff2424';
-  ctx.fillRect(-34, 0, 2, 3);
-  ctx.fillRect(-34, 4, 2, 2);
-  ctx.fillStyle = '#c5c9d0';
-  ctx.fillRect(-36, 5, 2, 2.5);
-
-  // Carbon rear wing
-  ctx.fillStyle = '#16181c';
-  ctx.fillRect(-31, -8, 2, 6);
-  ctx.fillRect(-34, -9, 8, 2.5);
-
-  // 5-Spoke Wheels
-  for (const wx of [-20, 21]) {
-    ctx.save();
-    ctx.translate(wx, 8);
-    ctx.rotate(drawWheelAngle);
-
-    ctx.fillStyle = '#121316';
-    ctx.beginPath(); ctx.arc(0, 0, 7.5, 0, 6.28); ctx.fill();
-    if (withOutline) {
-      ctx.strokeStyle = '#181a1e';
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = '#6c727f';
-    ctx.beginPath(); ctx.arc(0, 0, 5, 0, 6.28); ctx.fill();
-
-    ctx.strokeStyle = '#f0f2f5';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    for (let a = 0; a < 5; a++) {
-      const ang = (a * Math.PI * 2) / 5;
-      ctx.moveTo(0, 0);
-      ctx.lineTo(Math.cos(ang) * 4.5, Math.sin(ang) * 4.5);
-    }
-    ctx.stroke();
-
-    ctx.fillStyle = '#121316';
-    ctx.beginPath(); ctx.arc(0, 0, 1.8, 0, 6.28); ctx.fill();
-    ctx.restore();
-  }
-}
-
-// In-game Sky Car with soft shadow and crisp outline for light pastel background
-function car(drawX = CAR_X) {
-  // Soft dark shadow under the car
-  ctx.save();
-  ctx.fillStyle = 'rgba(25, 30, 42, 0.28)';
-  ctx.beginPath();
-  ctx.ellipse(drawX, cy + 12 * CAR_SCALE, 34 * CAR_SCALE, 5 * CAR_SCALE, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  ctx.save();
-  ctx.translate(drawX, cy);
-  ctx.rotate(Math.max(-.14, Math.min(.14, vy / 400)));
-  ctx.scale(CAR_SCALE, CAR_SCALE);
-  renderCarBody(wheelRot, true);
-  ctx.restore();
-}
-
-// Start-up Loading Screen (white background, big car, orange progress bar)
 function drawLoadingScreen() {
-  try {
-    const bgGrad = ctx.createRadialGradient(W / 2, H * 0.44, 25, W / 2, H * 0.44, W * 0.85);
-    bgGrad.addColorStop(0, '#ffffff');
-    bgGrad.addColorStop(0.55, '#f4f6fa');
-    bgGrad.addColorStop(1, '#e3e7f0');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, W, H);
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#38bdf8');
+  bgGrad.addColorStop(1, '#0284c7');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
 
-    const carCenterX = W / 2;
-    const bounceY = Math.sin(loadingTimer * 4.5) * 4.5;
-    const carCenterY = H * 0.38 + bounceY;
-    const carScale = (W * 0.60) / 72;
+  drawFluffyClouds(ctx, 180, 160, 1.4, 0.85);
 
+  const carCenterX = W / 2;
+  const bounceY = Math.sin(loadingTimer * 4.5) * 5.5;
+  const carCenterY = H * 0.38 + bounceY;
+
+  // Car centered at about 60 percent of screen width
+  const loadW = Math.round(W * 0.60);
+  const loadH = trimmedCarCanvas
+    ? Math.round(loadW * (trimmedCarCanvas.height / trimmedCarCanvas.width))
+    : Math.round(loadW * 0.42);
+  const carScale = (W * 0.60) / 72;
+
+  const carReady = (trimmedCarCanvas != null);
+  const useFallback = !carReady && (carImgFailed || loadingTimer >= 1.5);
+
+  if (carReady || useFallback) {
     ctx.save();
-    for (const sl of speedLines) {
-      ctx.strokeStyle = 'rgba(165, 175, 192, ' + sl.alpha + ')';
-      ctx.lineWidth = sl.w;
-      ctx.beginPath();
-      const lx = carCenterX - 35 + sl.x;
-      const ly = carCenterY + sl.y;
-      ctx.moveTo(lx, ly);
-      ctx.lineTo(lx - sl.len, ly);
-      ctx.stroke();
-    }
-    ctx.restore();
+    ctx.globalAlpha = 1;
 
+    // Soft dark-blue shadow under the car
     ctx.save();
-    const shadowW = W * 0.32;
-    const shadowH = 11;
-    const shadowGrad = ctx.createRadialGradient(carCenterX, carCenterY + 45, 5, carCenterX, carCenterY + 45, shadowW);
-    shadowGrad.addColorStop(0, 'rgba(50, 60, 75, 0.28)');
-    shadowGrad.addColorStop(0.5, 'rgba(80, 90, 110, 0.12)');
-    shadowGrad.addColorStop(1, 'rgba(120, 130, 150, 0)');
+    const shadowW = loadW * 0.44;
+    const shadowH = 7.5;
+    const shadowY = carCenterY + loadH * 0.45;
+    const shadowGrad = ctx.createRadialGradient(carCenterX, shadowY, 2, carCenterX, shadowY, shadowW);
+    shadowGrad.addColorStop(0, 'rgba(15, 23, 62, 0.45)');
+    shadowGrad.addColorStop(0.55, 'rgba(15, 23, 62, 0.2)');
+    shadowGrad.addColorStop(1, 'rgba(15, 23, 62, 0)');
     ctx.fillStyle = shadowGrad;
     ctx.beginPath();
-    ctx.ellipse(carCenterX, carCenterY + 45, shadowW, shadowH, 0, 0, Math.PI * 2);
+    ctx.ellipse(carCenterX, shadowY, shadowW, shadowH, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    ctx.save();
     ctx.translate(carCenterX, carCenterY);
-    ctx.scale(carScale, carScale);
-    renderCarBody(loadingWheelRot, true);
-    ctx.restore();
 
-    const nameY = H * 0.54;
+    // Very soft warm yellow glow behind the car
     ctx.save();
-    ctx.font = '900 32px "Orbitron", "Rajdhani", "Impact", system-ui, sans-serif';
-    const textSky = 'SKY ';
-    const textCar = 'CAR';
-    const wSky = ctx.measureText(textSky).width;
-    const wCar = ctx.measureText(textCar).width;
-    const startX = W / 2 - (wSky + wCar) / 2;
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#1c2028';
-    ctx.fillText(textSky, startX, nameY);
-    ctx.fillStyle = '#f37021';
-    ctx.fillText(textCar, startX + wSky, nameY);
-
-    ctx.font = '600 13px system-ui, -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#6e7687';
-    ctx.fillText('Loading...', W / 2, nameY + 24);
-    ctx.restore();
-
-    const barW = W * 0.70;
-    const barH = 10;
-    const barX = W / 2 - barW / 2;
-    const barY = H * 0.74;
-
-    const progress = Math.min(1, Math.max(0, loadingTimer / 2.5));
-    const pct = Math.min(100, Math.floor(progress * 100));
-
-    ctx.save();
-    ctx.font = '700 13px "Orbitron", "Rajdhani", system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#495262';
-    ctx.fillText(pct + '%', W / 2, barY - 10);
-
-    ctx.fillStyle = '#e2e6ee';
-    roundRect(ctx, barX, barY, barW, barH, 5);
+    const glowR = loadW * 0.54;
+    const glowGrad = ctx.createRadialGradient(0, 0, 5, 0, 0, glowR);
+    glowGrad.addColorStop(0, 'rgba(253, 224, 71, 0.38)');
+    glowGrad.addColorStop(0.5, 'rgba(250, 204, 21, 0.16)');
+    glowGrad.addColorStop(1, 'rgba(250, 204, 21, 0)');
+    ctx.fillStyle = glowGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, glowR, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
 
-    const fillW = barW * progress;
-    if (fillW > 0) {
-      const fillGrad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
-      fillGrad.addColorStop(0, '#ff9029');
-      fillGrad.addColorStop(1, '#f37021');
-      ctx.fillStyle = fillGrad;
-      roundRect(ctx, barX, barY, fillW, barH, 5);
-      ctx.fill();
+    // Thin animated speed lines behind the car
+    ctx.save();
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 4; i++) {
+      const lineY = -loadH * 0.22 + i * (loadH * 0.16);
+      const phase = (loadingTimer * 3.2 + i * 1.6) % 1;
+      const startX = -loadW * 0.42 - phase * 55;
+      const len = 22 + (i % 3) * 14;
+      const lineAlpha = (0.25 + 0.4 * Math.sin(phase * Math.PI)).toFixed(2);
+      const lineGrad = ctx.createLinearGradient(startX - len, 0, startX, 0);
+      lineGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+      lineGrad.addColorStop(1, `rgba(255, 255, 255, ${lineAlpha})`);
+      ctx.strokeStyle = lineGrad;
+      ctx.beginPath();
+      ctx.moveTo(startX - len, lineY);
+      ctx.lineTo(startX, lineY);
+      ctx.stroke();
     }
     ctx.restore();
 
-  } catch (err) {
-    st = 'ready';
-  }
-}
+    // Yellow sports car image
+    if (trimmedCarCanvas) {
+      ctx.shadowColor = 'rgba(15, 23, 62, 0.35)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetY = 2;
+      ctx.drawImage(trimmedCarCanvas, -loadW / 2, -loadH / 2, loadW, loadH);
 
-// High-contrast text drawing: dark gray text (#1f242d) with thin white outline for light pastel background
-function tx(s, x, y, size, align, col, withStroke = true) {
-  ctx.font = '700 ' + size + 'px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
-  ctx.textAlign = align;
-  if (withStroke) {
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = Math.max(2.5, size / 6);
-    ctx.lineJoin = 'round';
-    ctx.miterLimit = 2;
-    ctx.strokeText(s, x, y);
-  }
-  ctx.fillStyle = col || '#1f242d';
-  ctx.fillText(s, x, y);
-}
+      // Rotating sports wheels on loading screen
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
 
-// Clean light background with pre-rendered parallax layers
-function drawBackground() {
-  try {
-    if (bgGradientCanvas) {
-      ctx.drawImage(bgGradientCanvas, 0, 0);
+      const loadRearX = -loadW / 2 + loadW * 0.1843;
+      const loadFrontX = -loadW / 2 + loadW * 0.8190;
+      const loadWheelY = -loadH / 2 + loadH * 0.7026;
+      const loadWheelR = loadH * 0.2908;
+
+      drawSportsWheel(loadRearX, loadWheelY, loadWheelR, loadingWheelRot);
+      drawSportsWheel(loadFrontX, loadWheelY, loadWheelR, loadingWheelRot);
     } else {
-      ctx.fillStyle = '#f0f4f9';
-      ctx.fillRect(0, 0, W, H);
+      ctx.scale(carScale, carScale);
+      renderCarBody(loadingWheelRot);
     }
 
-    // Parallax layers (scrolling smoothly and looping every 360 px)
-    if (parallaxCanvases.length > 0) {
-      const p0 = (cam * 0.08) % 360;
-      ctx.drawImage(parallaxCanvases[0], -p0, 0);
-    }
-    if (parallaxCanvases.length > 1) {
-      const p1 = (cam * 0.20) % 360;
-      ctx.drawImage(parallaxCanvases[1], -p1, 0);
-    }
-    if (parallaxCanvases.length > 2) {
-      const p2 = (cam * 0.35) % 360;
-      ctx.drawImage(parallaxCanvases[2], -p2, 0);
-    }
-
-    // Slow light particles
-    drawAtmosphereParticles();
-
-  } catch (err) {
-    ctx.fillStyle = '#f0f4f9';
-    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
   }
-}
 
-function drawAtmosphereParticles() {
+  // Game name under the car
+  const titleY = carCenterY + loadH / 2 + 50;
+  drawGlossyText('THORN RUSH', W / 2, titleY, 44, 'center', '#ffffff', '#0f172a', 7);
+
+  // Loading bar and "Loading..." at the bottom
+  const barW = W * 0.70;
+  const barH = 18;
+  const barX = W / 2 - barW / 2;
+  const barY = H * 0.74;
+
+  const pct = Math.min(100, Math.floor(visualLoadProgress * 100));
+  drawGlossyText(`Loading... ${pct}%`, W / 2, barY - 14, 16, 'center', '#ffffff', '#0f172a', 4);
+
+  // Background track
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.55)';
+  roundRect(ctx, barX, barY, barW, barH, barH / 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  roundRect(ctx, barX, barY, barW, barH, barH / 2);
+  ctx.stroke();
+
+  // Progress follows real loading progress with car matching yellow-to-orange gradient
+  const fillW = Math.max(barH, barW * visualLoadProgress);
+  const fillGrad = ctx.createLinearGradient(0, barY, 0, barY + barH);
+  fillGrad.addColorStop(0, '#fef08a');
+  fillGrad.addColorStop(0.45, '#facc15');
+  fillGrad.addColorStop(1, '#ea580c');
+  ctx.fillStyle = fillGrad;
+  roundRect(ctx, barX, barY, fillW, barH, barH / 2);
+  ctx.fill();
+
+  // Glossy highlight on loading bar
   ctx.save();
-  const type = curConfig.particleType || 'dust';
-  for (const ap of atmoParts) {
-    ctx.globalAlpha = ap.alpha || 0.6;
-    if (type === 'petals') {
-      ctx.save();
-      ctx.translate(ap.x, ap.y);
-      ctx.rotate(ap.rot);
-      ctx.fillStyle = `hsla(${curConfig.H}, 75%, 72%, 0.7)`;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, ap.size * 1.4, ap.size * 0.8, 0, 0, 6.28);
-      ctx.fill();
-      ctx.restore();
-    } else if (type === 'snow') {
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(ap.x, ap.y, ap.size * 0.65, 0, 6.28);
-      ctx.fill();
-    } else if (type === 'bubbles') {
-      ctx.strokeStyle = `hsla(${curConfig.H}, 60%, 75%, 0.75)`;
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.arc(ap.x, ap.y, ap.size * 1.1, 0, 6.28);
-      ctx.stroke();
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(ap.x - ap.size * 0.3, ap.y - ap.size * 0.3, ap.size * 0.35, 0, 6.28);
-      ctx.fill();
-    } else if (type === 'sparkles') {
-      ctx.fillStyle = `hsla(${curConfig.H}, 80%, 70%, 0.8)`;
-      ctx.save();
-      ctx.translate(ap.x, ap.y);
-      ctx.rotate(ap.rot);
-      const sp = ap.size * 1.1;
-      ctx.fillRect(-sp, -0.8, sp * 2, 1.6);
-      ctx.fillRect(-0.8, -sp, 1.6, sp * 2);
-      ctx.restore();
-    } else if (type === 'leaves') {
-      ctx.save();
-      ctx.translate(ap.x, ap.y);
-      ctx.rotate(ap.rot);
-      ctx.fillStyle = `hsla(${curConfig.H}, 45%, 65%, 0.75)`;
-      ctx.beginPath();
-      ctx.moveTo(0, -ap.size * 1.3);
-      ctx.quadraticCurveTo(ap.size, 0, 0, ap.size * 1.3);
-      ctx.quadraticCurveTo(-ap.size, 0, 0, -ap.size * 1.3);
-      ctx.fill();
-      ctx.restore();
-    } else {
-      // Dust / light specks
-      ctx.fillStyle = `hsla(${curConfig.H}, 40%, 75%, 0.7)`;
-      ctx.beginPath();
-      ctx.arc(ap.x, ap.y, ap.size * 0.7, 0, 6.28);
-      ctx.fill();
-    }
-  }
+  ctx.beginPath();
+  roundRect(ctx, barX, barY, fillW, barH, barH / 2);
+  ctx.clip();
+  const glossGrad = ctx.createLinearGradient(0, barY, 0, barY + barH * 0.55);
+  glossGrad.addColorStop(0, 'rgba(255, 255, 255, 0.75)');
+  glossGrad.addColorStop(1, 'rgba(255, 255, 255, 0.12)');
+  ctx.fillStyle = glossGrad;
+  ctx.fillRect(barX, barY, fillW, barH * 0.5);
   ctx.restore();
 }
 
-// Thin rails (about 10 px tall) with rivets and end caps; background shows beyond rail
-function drawWall(s, x) {
-  try {
-    const cfg = curConfig;
-    const w = s.w + 1;
+// ==========================================
+// REAL CAMERA SPEED MEASUREMENT & DEBUG OVERLAY
+// ==========================================
+let camSamples = [];
+let realSpeedWPerSec = 0;
+let realSpeedPxPerSec = 0;
 
-    // 1. Top Rail: 10 px tall along [s.top - 28, s.top - 18]
-    const topY = s.top - 28;
-    drawRailSegment(x, topY, w, true, cfg);
-
-    // 2. Bottom Rail: 10 px tall along [s.bot + 18, s.bot + 28]
-    const botY = s.bot + 18;
-    drawRailSegment(x, botY, w, false, cfg);
-
-  } catch (err) {
-    ctx.fillStyle = '#7a828e';
-    ctx.fillRect(x, s.top - 28, s.w + 1, 10);
-    ctx.fillRect(x, s.bot + 18, s.w + 1, 10);
+function updateRealSpeedMeasurement(nowSec) {
+  camSamples.push({ t: nowSec, cam: cam });
+  while (camSamples.length > 2 && camSamples[0].t < nowSec - 1.0) {
+    camSamples.shift();
+  }
+  if (camSamples.length >= 2) {
+    const oldest = camSamples[0];
+    const newest = camSamples[camSamples.length - 1];
+    const dtWindow = newest.t - oldest.t;
+    if (dtWindow >= 0.08) {
+      const dCam = newest.cam - oldest.cam;
+      realSpeedPxPerSec = Math.max(0, dCam / dtWindow);
+      realSpeedWPerSec = realSpeedPxPerSec / W;
+    }
   }
 }
 
-function drawRailSegment(x, y, w, isCeiling, cfg) {
-  // Rail body gradient
-  const railGrad = ctx.createLinearGradient(0, y, 0, y + 10);
-  railGrad.addColorStop(0, '#ffffff');
-  railGrad.addColorStop(0.2, cfg.railColor || '#7a828e');
-  railGrad.addColorStop(0.8, cfg.railColor || '#7a828e');
-  railGrad.addColorStop(1, '#1b2028');
-  ctx.fillStyle = railGrad;
-  ctx.fillRect(x, y, w, 10);
-
-  // Top/bottom edge outlines
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-  ctx.fillRect(x, y, w, 1);
-  ctx.fillStyle = 'rgba(20, 24, 32, 0.85)';
-  ctx.fillRect(x, y + 9, w, 1);
-
-  // Metal end caps at each end of the rail segment
-  ctx.fillStyle = '#222834';
-  ctx.fillRect(x - 1, y - 1, 3, 12);
+function drawDebugOverlay() {
+  if (!SHOW_DEBUG || st !== 'play') return;
+  ctx.save();
+  ctx.font = 'bold 11px monospace, sans-serif';
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(x - 1, y - 1, 1, 12);
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.95)';
+  ctx.shadowBlur = 3;
+  ctx.shadowOffsetX = 1;
+  ctx.shadowOffsetY = 1;
 
-  ctx.fillStyle = '#222834';
-  ctx.fillRect(x + w - 2, y - 1, 3, 12);
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-  ctx.fillRect(x + w - 2, y - 1, 1, 12);
+  const textX = 12;
+  const lineH = 15;
+  const baseY = H - 14 - botInset;
 
-  // Ornamentation along the rail
-  const centerY = y + 5;
-  const style = cfg.railStyle || 'rivets';
-  const startRivet = Math.floor(x / 16) * 16;
+  const speedStr = `Speed: ${realSpeedWPerSec.toFixed(2)} w/s (${Math.round(realSpeedPxPerSec)} px/s)`;
+  const canvasStr = `Canvas: ${cv.width}x${cv.height}px (${W}x${H})`;
+  const maxUpStr = `MAX_UP_SPEED: ${Math.round(MAX_UP_SPEED)} px/s`;
 
-  if (style === 'rivets' || style === 'dots') {
-    for (let rx = startRivet; rx <= x + w + 16; rx += 16) {
-      if (rx < x + 3 || rx > x + w - 3) continue;
-      ctx.fillStyle = '#1e242d';
-      ctx.beginPath(); ctx.arc(rx, centerY, 2.2, 0, 6.28); ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(rx - 0.6, centerY - 0.6, 1, 0, 6.28); ctx.fill();
-    }
-  } else if (style === 'bolts') {
-    for (let rx = startRivet; rx <= x + w + 18; rx += 18) {
-      if (rx < x + 4 || rx > x + w - 4) continue;
-      ctx.fillStyle = '#1e242d';
-      ctx.fillRect(rx - 2.5, centerY - 2.5, 5, 5);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(rx - 2, centerY - 2, 2, 2);
-    }
-  } else if (style === 'small gears') {
-    for (let rx = startRivet; rx <= x + w + 14; rx += 14) {
-      if (rx < x + 3 || rx > x + w - 3) continue;
-      ctx.fillStyle = '#1e242d';
-      ctx.beginPath(); ctx.arc(rx, centerY, 2.8, 0, 6.28); ctx.fill();
-      ctx.fillStyle = cfg.railColor || '#7a828e';
-      ctx.beginPath(); ctx.arc(rx, centerY, 1.4, 0, 6.28); ctx.fill();
-    }
-  } else if (style === 'chain links') {
-    ctx.strokeStyle = '#1e242d';
-    ctx.lineWidth = 1.3;
-    for (let rx = startRivet; rx <= x + w + 14; rx += 12) {
-      if (rx < x + 3 || rx > x + w - 3) continue;
-      ctx.strokeRect(rx - 4, centerY - 2, 8, 4);
-    }
-  }
+  ctx.fillText(speedStr, textX, baseY - lineH * 2);
+  ctx.fillText(canvasStr, textX, baseY - lineH);
+  ctx.fillText(maxUpStr, textX, baseY);
+  ctx.restore();
 }
 
-// Blit pre-rendered 3D glossy stud sprites
-function drawSpike(x, baseY, isTop, sp) {
-  try {
-    if (!sp || !sp.h || sp.h <= 0) return;
-    const key = `${sp.size}_${isTop ? 'top' : 'bot'}`;
-    const spr = spikeCanvases[key];
-    if (spr) {
-      if (isTop) {
-        ctx.drawImage(spr, x + 6 - 18, baseY - 2);
-      } else {
-        ctx.drawImage(spr, x + 6 - 18, baseY - 46);
-      }
-    }
-  } catch (err) {}
+// HUD during play: Score pill in top-right, level progress bar with badge and star
+function drawHUD() {
+  const cfg = curConfig;
+  const tunnelDist = Math.max(0, Math.min(LEVEL_LENGTH, (cam + CAR_X) - TUNNEL_START_X));
+  const progress = tunnelDist / LEVEL_LENGTH;
+  const curScore = Math.floor(progress * 100);
+  const currentTotal = 100 * (curLevel - 1) + curScore;
+  if (currentTotal > best) {
+    best = currentTotal;
+    try { localStorage.setItem('skycarBest', best); } catch (e) {}
+  }
+
+  // 1. Score in coin-pill style at top right (white text with dark outline), moved down by safe area
+  drawCoinPill(W - 105, 18 + topInset, 92, 32, currentTotal);
+
+  // 2. Glossy Level Progress Bar, moved down by safe area
+  const barX = 48, barY = 22 + topInset, barW = 190, barH = 18;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
+  roundRect(ctx, barX, barY, barW, barH, barH / 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.6;
+  roundRect(ctx, barX, barY, barW, barH, barH / 2);
+  ctx.stroke();
+
+  const fillW = Math.max(barH, barW * progress);
+  if (fillW > 0) {
+    const fGrad = ctx.createLinearGradient(0, barY, 0, barY + barH);
+    fGrad.addColorStop(0, '#fef08a');
+    fGrad.addColorStop(0.4, cfg.accentColor);
+    fGrad.addColorStop(1, '#0f172a');
+    ctx.fillStyle = fGrad;
+    roundRect(ctx, barX, barY, fillW, barH, barH / 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.fillRect(barX + 2, barY + 1.5, fillW - 4, barH * 0.4);
+
+    const starX = barX + fillW - 2;
+    drawGoldStar(starX, barY + barH / 2, 11);
+  }
+
+  // Round Level Badge on Left Edge (White text with dark outline)
+  const badgeR = 17;
+  const badgeX = 30, badgeY = barY + barH / 2;
+  const bGrad = ctx.createLinearGradient(0, badgeY - badgeR, 0, badgeY + badgeR);
+  bGrad.addColorStop(0, '#6ee7b7');
+  bGrad.addColorStop(0.5, '#10b981');
+  bGrad.addColorStop(1, '#047857');
+  ctx.fillStyle = bGrad;
+  ctx.beginPath(); ctx.arc(badgeX, badgeY, badgeR, 0, 6.28); ctx.fill();
+  ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2.2; ctx.stroke();
+  drawGlossyText(`${curLevel}`, badgeX, badgeY + 1, 16, 'center', '#ffffff', '#0f172a', 3.8);
+  ctx.restore();
 }
 
-function draw() {
-  if (st === 'loading') {
-    if (loadingFade > 0) {
-      drawGameContent();
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, 1 - loadingFade);
-      drawLoadingScreen();
-      ctx.restore();
-    } else {
-      drawLoadingScreen();
-    }
-    return;
-  }
-  drawGameContent();
+function drawSettingsPopup() {
+  ctx.save();
+  ctx.fillStyle = 'rgba(10, 15, 25, 0.65)';
+  ctx.fillRect(0, 0, W, H);
+
+  const cw = 290, ch = 280;
+  const cx = W / 2 - cw / 2, cy = H / 2 - ch / 2 - 10;
+
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 8;
+  ctx.fillStyle = '#f8fafc';
+  roundRect(ctx, cx, cy, cw, ch, 24);
+  ctx.fill();
+
+  ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 5;
+  roundRect(ctx, cx, cy, cw, ch, 24);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#1e3a8a';
+  ctx.lineWidth = 2;
+  roundRect(ctx, cx, cy, cw, ch, 24);
+  ctx.stroke();
+
+  drawRibbonHeader(W / 2, cy - 20, 200, 44, 'SETTINGS', BUTTON_THEMES.blue, 2);
+
+  const isXPressed = (activePress === 'close_settings');
+  drawRoundGlossyButton(cx + cw - 12, cy + 12, 17, BUTTON_THEMES.red, 'close', isXPressed);
+
+  const soundBtnX = cx + 28, soundBtnY = cy + 65, btnSz = 105;
+  const isSoundPressed = (activePress === 'toggle_sound');
+  const soundTheme = soundEnabled ? BUTTON_THEMES.green : BUTTON_THEMES.gray;
+  drawGlossyButton(soundBtnX, soundBtnY, btnSz, btnSz, soundTheme, null, soundEnabled ? 'sound_on' : 'sound_off', isSoundPressed, 18);
+  drawGlossyText('SOUND', soundBtnX + btnSz / 2, soundBtnY + 22, 15, 'center', '#ffffff', soundTheme.border, 3);
+  drawGlossyText(soundEnabled ? 'ON' : 'OFF', soundBtnX + btnSz / 2, soundBtnY + btnSz - 22, 17, 'center', soundEnabled ? '#ffffff' : '#cbd5e1', soundTheme.border, 3.8);
+
+  const vibBtnX = cx + cw - 28 - btnSz, vibBtnY = cy + 65;
+  const isVibPressed = (activePress === 'toggle_vibrate');
+  const vibTheme = vibrateEnabled ? BUTTON_THEMES.green : BUTTON_THEMES.gray;
+  drawGlossyButton(vibBtnX, vibBtnY, btnSz, btnSz, vibTheme, null, vibrateEnabled ? 'vibrate_on' : 'vibrate_off', isVibPressed, 18);
+  drawGlossyText('HAPTICS', vibBtnX + btnSz / 2, vibBtnY + 22, 15, 'center', '#ffffff', vibTheme.border, 3);
+  drawGlossyText(vibrateEnabled ? 'ON' : 'OFF', vibBtnX + btnSz / 2, vibBtnY + btnSz - 22, 17, 'center', vibrateEnabled ? '#ffffff' : '#cbd5e1', vibTheme.border, 3.8);
+
+  drawGlossyText('Tap toggles to switch', W / 2, cy + ch - 35, 14, 'center', '#ffffff', '#0f172a', 3.2);
+
+  ctx.restore();
+}
+
+function drawLevelCompletePopup() {
+  ctx.save();
+  ctx.fillStyle = 'rgba(10, 15, 25, 0.65)';
+  ctx.fillRect(0, 0, W, H);
+
+  drawConfetti();
+
+  const cw = 290, ch = 270;
+  const cx = W / 2 - cw / 2, cy = H / 2 - ch / 2 - 20;
+
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 8;
+  ctx.fillStyle = '#f8fafc';
+  roundRect(ctx, cx, cy, cw, ch, 24);
+  ctx.fill();
+
+  ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = '#22c55e';
+  ctx.lineWidth = 5;
+  roundRect(ctx, cx, cy, cw, ch, 24);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#052e16';
+  ctx.lineWidth = 2;
+  roundRect(ctx, cx, cy, cw, ch, 24);
+  ctx.stroke();
+
+  drawRibbonHeader(W / 2, cy - 20, 230, 44, `LEVEL ${curLevel} CLEAR!`, BUTTON_THEMES.green, 2);
+
+  const isXPressed = (activePress === 'close_complete');
+  drawRoundGlossyButton(cx + cw - 12, cy + 12, 17, BUTTON_THEMES.red, 'close', isXPressed);
+
+  drawGoldStar(W / 2 - 45, cy + 62, 18);
+  drawGoldStar(W / 2, cy + 50, 24);
+  drawGoldStar(W / 2 + 45, cy + 62, 18);
+
+  const totalScore = 100 * curLevel;
+  drawGlossyText(`+100 PTS!`, W / 2, cy + 115, 26, 'center', '#ffffff', '#0f172a', 5);
+  drawGlossyText(`Total Score: ${totalScore}`, W / 2, cy + 148, 16, 'center', '#ffffff', '#0f172a', 3.5);
+
+  const btnW = 210, btnH = 54;
+  const isNextPressed = (activePress === 'next_level');
+  drawGlossyButton(W / 2 - btnW / 2, cy + ch - 72, btnW, btnH, BUTTON_THEMES.green, 'NEXT LEVEL', null, isNextPressed, 27);
+
+  ctx.restore();
+}
+
+function drawCrashPopup() {
+  ctx.save();
+  ctx.fillStyle = 'rgba(10, 15, 25, 0.7)';
+  ctx.fillRect(0, 0, W, H);
+
+  const cw = 290, ch = 270;
+  const cx = W / 2 - cw / 2, cy = H / 2 - ch / 2 - 20;
+
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 8;
+  ctx.fillStyle = '#f8fafc';
+  roundRect(ctx, cx, cy, cw, ch, 24);
+  ctx.fill();
+
+  ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = '#ef4444';
+  ctx.lineWidth = 5;
+  roundRect(ctx, cx, cy, cw, ch, 24);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#450a0a';
+  ctx.lineWidth = 2;
+  roundRect(ctx, cx, cy, cw, ch, 24);
+  ctx.stroke();
+
+  drawRibbonHeader(W / 2, cy - 20, 200, 44, 'CRASHED', BUTTON_THEMES.red, 2);
+
+  const isXPressed = (activePress === 'close_dead');
+  drawRoundGlossyButton(cx + cw - 12, cy + 12, 17, BUTTON_THEMES.red, 'close', isXPressed);
+
+  const tunnelDist = Math.max(0, Math.min(LEVEL_LENGTH, (cam + CAR_X) - TUNNEL_START_X));
+  const progress = tunnelDist / LEVEL_LENGTH;
+  const curScore = Math.floor(progress * 100);
+  const currentTotal = 100 * (curLevel - 1) + curScore;
+
+  drawGlossyText(`LEVEL ${curLevel}: ${curScore}%`, W / 2, cy + 65, 22, 'center', '#ffffff', '#ef4444', 4.5);
+  drawGlossyText(`Score: ${currentTotal}`, W / 2, cy + 105, 17, 'center', '#ffffff', '#0f172a', 3.5);
+  drawGlossyText(`Best: ${best}`, W / 2, cy + 132, 17, 'center', '#ffffff', '#ea580c', 3.5);
+
+  const btnW = 210, btnH = 54;
+  const isTryPressed = (activePress === 'try_again');
+  drawGlossyButton(W / 2 - btnW / 2, cy + ch - 72, btnW, btnH, BUTTON_THEMES.orange, 'TRY AGAIN', null, isTryPressed, 27);
+
+  ctx.restore();
 }
 
 function drawGameContent() {
   const cfg = curConfig;
 
-  // 1. Clean light background
+  // 1. Picture background (or fallback procedural)
   drawBackground();
 
-  // 2. Starting Road Platform (-50 to 470)
-  try {
-    drawRoadPlatform(START_ROAD_START, START_ROAD_END, ROAD_TOP);
-  } catch (e) {}
+  // 2. Starting Road Platform
+  drawRoadPlatform(START_ROAD_START, START_ROAD_END, ROAD_TOP);
 
-  // 3. Finish Road Platform (1950 to 2470) with flags and lights
-  try {
-    drawRoadPlatform(FINISH_ROAD_X, FINISH_ROAD_END, ROAD_TOP, true);
-  } catch (e) {}
+  // 3. Finish Road Platform
+  drawRoadPlatform(FINISH_ROAD_X, FINISH_ROAD_END, ROAD_TOP, true);
 
-  // 4. Man in black suit standing near end of finish platform
-  try {
-    drawMan(FINISH_ROAD_X + 430 - cam, ROAD_TOP + 24);
-  } catch (e) {}
+  // 4. Spikes & Studded Rails with continuous connected rail pieces
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    const x = s.x - cam;
+    if (!s.isOpen) drawWall(s, x);
 
-  // 5. Tunnel rails & 3D studs
-  try {
-    for (const s of segs) {
-      const x = s.x - cam;
-      if (!s.isOpen) drawWall(s, x);
-
-      if (s.topSpikes) {
-        const count = s.topSpikes.length;
-        for (let i = 0; i < count; i++) {
-          drawSpike(x + i * 12, s.top - 18, true, s.topSpikes[i]);
+    // Connected Rails between neighboring segments (visual only, no collision)
+    if (i < segs.length - 1) {
+      const sNext = segs[i + 1];
+      if (!s.isOpen && !sNext.isOpen) {
+        const seamX = (s.x + s.w) - cam;
+        if (Math.abs(s.top - sNext.top) > 1) {
+          drawVerticalRailConnector(seamX, s.top - 28, sNext.top - 28, cfg);
         }
-      }
-      if (s.botSpikes) {
-        const count = s.botSpikes.length;
-        for (let i = 0; i < count; i++) {
-          drawSpike(x + i * 12, s.bot + 18, false, s.botSpikes[i]);
+        if (Math.abs(s.bot - sNext.bot) > 1) {
+          drawVerticalRailConnector(seamX, s.bot + 18, sNext.bot + 18, cfg);
         }
       }
     }
-  } catch (e) {}
 
-  // 6. Sky Car (McLaren F1 supercar) with soft shadow and crisp dark outline
-  try {
-    car(CAR_X);
-  } catch (e) {
+    if (s.topSpikes) {
+      const count = s.topSpikes.length;
+      for (let j = 0; j < count; j++) {
+        drawSpike(x + j * 12, s.top - 18, true, s.topSpikes[j]);
+      }
+    }
+    if (s.botSpikes) {
+      const count = s.botSpikes.length;
+      for (let j = 0; j < count; j++) {
+        drawSpike(x + j * 12, s.bot + 18, false, s.botSpikes[j]);
+      }
+    }
+  }
+
+  // 5. Sky Car (thin dark outline + soft shadow)
+  if (st === 'ready') {
+    const menuAlpha = Math.min(1, menuFadeTimer / 0.3);
     ctx.save();
-    ctx.fillStyle = '#f37021';
-    ctx.fillRect(CAR_X - 25 * CAR_SCALE, cy - 8 * CAR_SCALE, 50 * CAR_SCALE, 16 * CAR_SCALE);
+    ctx.globalAlpha = menuAlpha;
+    car(CAR_X);
+    ctx.restore();
+  } else {
+    car(CAR_X);
+  }
+
+  // 6. Wheel thruster smoke
+  for (const p of parts) {
+    const k = 1 - p.l / p.m;
+    ctx.globalAlpha = 0.7 * k;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * (1 + 0.3 * (1 - k)), 0, 6.28);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // 7. UI and Screens (all HUD text in white with dark outline)
+  if (st === 'play') {
+    drawHUD();
+    if (SHOW_DEBUG) {
+      drawDebugOverlay();
+    }
+
+  } else if (st === 'transition') {
+    drawHUD();
+    let cardAlpha = 1;
+    if (transitionTimer < 0.4) cardAlpha = transitionTimer / 0.4;
+    else if (transitionTimer > 1.4) cardAlpha = Math.max(0, 1 - (transitionTimer - 1.4) / 0.35);
+
+    ctx.save();
+    ctx.globalAlpha = cardAlpha;
+    drawRibbonHeader(W / 2, 210 + topInset * 0.5, 270, 48, `LEVEL ${curLevel}: ${cfg.name.toUpperCase()}`, BUTTON_THEMES.blue, 2);
+    ctx.restore();
+
+  } else if (st === 'ready') {
+    const menuAlpha = Math.min(1, menuFadeTimer / 0.3);
+    ctx.save();
+    ctx.globalAlpha = menuAlpha;
+
+    // Top Right: Coin-counter pill with gold star coin and best score (moved down by topInset)
+    drawCoinPill(W - 120, 24 + topInset, 106, 34, best, true);
+
+    // Title Logo
+    drawGlossyText('THORN RUSH', W / 2, 120 + topInset * 0.6, 46, 'center', '#ffffff', '#0f172a', 8);
+    drawGlossyText(`${cfg.name.toUpperCase()}`, W / 2, 165 + topInset * 0.6, 18, 'center', '#ffffff', '#0f172a', 4.5);
+
+    // Bottom Row: moved up by botInset
+    const btnY = H - 70 - botInset;
+    const playY = H - 98 - botInset;
+
+    const isSetPressed = (activePress === 'open_settings');
+    drawRoundGlossyButton(52, btnY, 26, BUTTON_THEMES.blue, 'gear', isSetPressed);
+
+    const isLevelPressed = (activePress === 'start_level');
+    drawGlossyButton(96, playY, 168, 56, BUTTON_THEMES.green, `LEVEL ${curLevel}`, null, isLevelPressed, 28);
+
+    const isCarPressed = (activePress === 'car_garage');
+    drawRoundGlossyButton(308, btnY, 26, BUTTON_THEMES.purple, 'car', isCarPressed);
+
+    ctx.restore();
+
+  } else if (st === 'level_complete') {
+    drawLevelCompletePopup();
+
+  } else if (st === 'dead') {
+    drawCrashPopup();
+  }
+
+  if (settingsOpen) {
+    drawSettingsPopup();
+  }
+
+  if (toastMsg && toastTimer > 0) {
+    ctx.save();
+    const tw = 180, th = 38;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 4;
+    ctx.fillStyle = '#1e1b4b';
+    roundRect(ctx, W / 2 - tw / 2, 230, tw, th, 19);
+    ctx.fill();
+    ctx.strokeStyle = '#c084fc';
+    ctx.lineWidth = 2;
+    roundRect(ctx, W / 2 - tw / 2, 230, tw, th, 19);
+    ctx.stroke();
+    drawGlossyText(toastMsg, W / 2, 249, 16, 'center', '#ffffff', '#3b0764', 3.8);
     ctx.restore();
   }
+}
 
-  // 7. Vertical wheel thruster smoke and road dust
-  try {
-    for (const p of parts) {
-      const k = 1 - p.l / p.m;
-      ctx.globalAlpha = 0.75 * k;
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, (p.size || 4) * (1 + 0.4 * (1 - k)), 0, 6.28);
-      ctx.fill();
+function draw() {
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  if (st === 'loading') {
+    const loadingAlpha = Math.max(0, 1 - loadingFade);
+    if (loadingAlpha > 0) {
+      ctx.save();
+      ctx.globalAlpha = loadingAlpha;
+      drawLoadingScreen();
+      ctx.restore();
     }
-    ctx.globalAlpha = 1;
-  } catch (e) {
-    ctx.globalAlpha = 1;
+    ctx.restore();
+    return;
   }
 
-  // 8. Confetti during Level Complete
-  try {
-    drawConfetti();
-  } catch (e) {}
-
-  // 9. HUD and UI screens (high contrast dark gray text with white outline)
-  try {
-    const tunnelDist = Math.max(0, Math.min(LEVEL_LENGTH, (cam + CAR_X) - TUNNEL_START_X));
-    const progress = tunnelDist / LEVEL_LENGTH;
-    const curScore = Math.floor(progress * 100);
-    const currentTotal = 100 * (curLevel - 1) + curScore;
-    if (currentTotal > best) { best = currentTotal; try { localStorage.setItem('skycarBest', best); } catch (e) {} }
-
-    if (st === 'play') {
-      const bx = 16, by = 24, bw = W - 32, bh = 8;
-
-      // Level and Name
-      tx('Level ' + curLevel + ': ' + cfg.name, W / 2, 18, 13, 'center', '#1f242d');
-
-      // Progress bar track
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-      ctx.strokeStyle = '#1f242d';
-      ctx.lineWidth = 1.5;
-      roundRect(ctx, bx, by, bw, bh, 4);
-      ctx.fill();
-      ctx.stroke();
-
-      // Progress bar fill: hsl(H, 80%, 50%)
-      const fillW = Math.max(0, bw * progress);
-      if (fillW > 0) {
-        ctx.fillStyle = `hsl(${cfg.H}, 80%, 50%)`;
-        roundRect(ctx, bx, by, fillW, bh, 4);
-        ctx.fill();
-      }
-
-      // Scores
-      tx(curScore + ' / 100', 16, 66, 24, 'left');
-      tx('Score ' + currentTotal + '  |  Best ' + best, W - 16, 64, 13, 'right', '#1f242d');
-
-    } else if (st === 'transition') {
-      if (transitionTimer < 0.25) {
-        const fadeOut = Math.min(1, transitionTimer / 0.25);
-        ctx.fillStyle = 'rgba(0, 0, 0, ' + fadeOut + ')';
-        ctx.fillRect(0, 0, W, H);
-      } else {
-        if (transitionTimer < 0.5) {
-          const fadeIn = Math.max(0, 1 - (transitionTimer - 0.25) / 0.25);
-          ctx.fillStyle = 'rgba(0, 0, 0, ' + fadeIn + ')';
-          ctx.fillRect(0, 0, W, H);
-        }
-
-        // Title Card showing Level Name
-        let cardAlpha = 1;
-        if (transitionTimer < 0.45) {
-          cardAlpha = Math.min(1, Math.max(0, (transitionTimer - 0.25) / 0.2));
-        } else if (transitionTimer > 1.5) {
-          cardAlpha = Math.min(1, Math.max(0, 1 - (transitionTimer - 1.5) / 0.25));
-        }
-
-        ctx.save();
-        ctx.globalAlpha = cardAlpha;
-        const cardW = 310, cardH = 104, cardY = 210;
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.18)';
-        ctx.shadowBlur = 18;
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-        roundRect(ctx, W / 2 - cardW / 2, cardY, cardW, cardH, 16);
-        ctx.fill();
-        ctx.strokeStyle = `hsl(${cfg.H}, 80%, 45%)`;
-        ctx.lineWidth = 2.5;
-        ctx.stroke();
-
-        tx('LEVEL ' + curLevel + ': ' + cfg.name.toUpperCase(), W / 2, cardY + 44, 18, 'center', `hsl(${cfg.H}, 80%, 35%)`, false);
-        tx('Drive on road, tap to lift off!', W / 2, cardY + 76, 14, 'center', '#1f242d', false);
-        ctx.restore();
-
-        const bx = 16, by = 24, bw = W - 32, bh = 8;
-        tx('Level ' + curLevel + ': ' + cfg.name, W / 2, 18, 13, 'center', '#1f242d');
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-        ctx.strokeStyle = '#1f242d';
-        ctx.lineWidth = 1.5;
-        roundRect(ctx, bx, by, bw, bh, 4);
-        ctx.fill();
-        ctx.stroke();
-
-        tx('0 / 100', 16, 66, 24, 'left');
-        const startScore = 100 * (curLevel - 1);
-        tx('Score ' + startScore + '  |  Best ' + best, W - 16, 64, 13, 'right', '#1f242d');
-      }
-
-    } else if (st === 'level_complete') {
-      ctx.fillStyle = 'rgba(15, 20, 28, 0.35)';
-      ctx.fillRect(0, 0, W, H);
-
-      const bannerY = 150;
-      ctx.save();
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
-      ctx.shadowBlur = 18;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
-      roundRect(ctx, W / 2 - 140, bannerY, 280, 86, 16);
-      ctx.fill();
-      ctx.strokeStyle = '#2ebd4a';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-      ctx.restore();
-
-      tx('Level ' + curLevel + ' Complete!', W / 2, bannerY + 36, 23, 'center', '#2ebd4a', false);
-      tx('Score: ' + (100 * curLevel), W / 2, bannerY + 66, 17, 'center', '#1f242d', false);
-
-      const btnActive = levelCompleteTimer >= 0.8;
-      const pulse = btnActive ? (1 + 0.04 * Math.sin((levelCompleteTimer - 0.8) * 8)) : 1;
-      const btnW = 240 * pulse;
-      const btnH = 54 * pulse;
-      const btnX = W / 2 - btnW / 2;
-      const btnY = 380 - (btnH - 54) / 2;
-
-      ctx.save();
-      if (btnActive) {
-        ctx.shadowColor = 'rgba(46, 189, 74, 0.35)';
-        ctx.shadowBlur = 14;
-        ctx.fillStyle = '#2ebd4a';
-        ctx.strokeStyle = '#249c3c';
-      } else {
-        ctx.fillStyle = '#e2e6ee';
-        ctx.strokeStyle = '#cbd2de';
-      }
-      roundRect(ctx, btnX, btnY, btnW, btnH, 27 * pulse);
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.restore();
-
-      const nextLvl = curLevel + 1;
-      if (btnActive) {
-        tx('Tap for Level ' + nextLvl, W / 2, btnY + btnH / 2 + 6, 19 * pulse, 'center', '#ffffff', false);
-      } else {
-        tx('Level ' + nextLvl + ' Ready...', W / 2, btnY + btnH / 2 + 5, 16, 'center', '#6e7687', false);
-      }
-
-    } else if (st === 'ready') {
-      ctx.fillStyle = 'rgba(15, 20, 28, 0.3)';
-      ctx.fillRect(0, 0, W, H);
-
-      tx('Sky Car', W / 2, 170, 48, 'center', '#1f242d');
-      tx('LEVEL ' + curLevel + ': ' + cfg.name.toUpperCase(), W / 2, 220, 16, 'center', `hsl(${cfg.H}, 80%, 35%)`);
-      tx('Drive on road, then launch into spikes!', W / 2, 250, 14, 'center', '#1f242d');
-
-      ctx.save();
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
-      ctx.shadowBlur = 14;
-      ctx.fillStyle = '#f37021';
-      roundRect(ctx, W / 2 - 115, 440, 230, 52, 26);
-      ctx.fill();
-      ctx.strokeStyle = '#c85008';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.restore();
-
-      tx('TAP TO START', W / 2, 472, 18, 'center', '#ffffff', false);
-
-    } else if (st === 'dead') {
-      ctx.fillStyle = 'rgba(15, 20, 28, 0.55)';
-      ctx.fillRect(0, 0, W, H);
-
-      const cardY = 175;
-      ctx.save();
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
-      ctx.shadowBlur = 18;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
-      roundRect(ctx, W / 2 - 140, cardY, 280, 165, 16);
-      ctx.fill();
-      ctx.strokeStyle = '#e0262f';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.restore();
-
-      tx('Crashed', W / 2, cardY + 40, 36, 'center', '#e0262f', false);
-      tx('Level ' + curLevel + ': ' + curScore + ' / 100', W / 2, cardY + 76, 18, 'center', '#1f242d', false);
-      tx('Total Score: ' + currentTotal, W / 2, cardY + 104, 15, 'center', '#4b5563', false);
-      tx('Best Score: ' + best, W / 2, cardY + 130, 15, 'center', '#f37021', false);
-
-      const retryText = RETRY_FROM_LEVEL_START ? ('RETRY LEVEL ' + curLevel) : 'RETRY LEVEL 1';
-      ctx.save();
-      ctx.shadowColor = 'rgba(243, 112, 33, 0.35)';
-      ctx.shadowBlur = 14;
-      ctx.fillStyle = '#f37021';
-      roundRect(ctx, W / 2 - 115, 390, 230, 52, 26);
-      ctx.fill();
-      ctx.strokeStyle = '#c85008';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.restore();
-
-      tx(retryText, W / 2, 422, 17, 'center', '#ffffff', false);
-    }
-  } catch (e) {}
+  drawGameContent();
+  ctx.restore();
 }
 
 function loop(t) {
-  const dt = Math.min(.033, (t - last) / 1000 || 0);
+  if (!last) last = t;
+  const rawDt = (t - last) / 1000;
   last = t;
+  const dt = Math.max(0.001, Math.min(0.1, rawDt || 0.016));
   step(dt);
   draw();
   requestAnimationFrame(loop);
 }
 
-function press() {
+// ==========================================
+// TOUCH & POINTER CONTROLS
+// ==========================================
+function getCanvasCoords(e) {
+  const rect = cv.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
+  };
+}
+
+function inBox(px, py, x, y, w, h) {
+  return px >= x && px <= x + w && py >= y && py <= y + h;
+}
+
+function inCircle(px, py, cx, cy, r) {
+  const dx = px - cx, dy = py - cy;
+  return dx * dx + dy * dy <= r * r;
+}
+
+function handlePointerDown(e) {
+  initAudio();
+  const { x, y } = getCanvasCoords(e);
+
   if (st === 'loading') return;
+
+  if (settingsOpen) {
+    const cw = 290, ch = 280;
+    const cx = W / 2 - cw / 2, cy = H / 2 - ch / 2 - 10;
+
+    if (inCircle(x, y, cx + cw - 12, cy + 12, 24)) {
+      activePress = 'close_settings';
+      return;
+    }
+    const soundBtnX = cx + 28, soundBtnY = cy + 65, btnSz = 105;
+    if (inBox(x, y, soundBtnX, soundBtnY, btnSz, btnSz)) {
+      activePress = 'toggle_sound';
+      return;
+    }
+    const vibBtnX = cx + cw - 28 - btnSz, vibBtnY = cy + 65;
+    if (inBox(x, y, vibBtnX, vibBtnY, btnSz, btnSz)) {
+      activePress = 'toggle_vibrate';
+      return;
+    }
+    if (!inBox(x, y, cx, cy, cw, ch)) {
+      settingsOpen = false;
+      playClickSound();
+    }
+    return;
+  }
+
   if (st === 'ready') {
+    const btnY = H - 70 - botInset;
+    if (inCircle(x, y, 52, btnY, 32)) {
+      activePress = 'open_settings';
+      return;
+    }
+    if (inCircle(x, y, 308, btnY, 32)) {
+      activePress = 'car_garage';
+      return;
+    }
     st = 'play';
     hold = true;
-  } else if (st === 'level_complete') {
+    activePress = 'start_level';
+    playClickSound();
+    return;
+  }
+
+  if (st === 'level_complete') {
+    const cw = 290, ch = 270;
+    const cx = W / 2 - cw / 2, cy = H / 2 - ch / 2 - 20;
+
+    if (inCircle(x, y, cx + cw - 12, cy + 12, 24)) {
+      activePress = 'close_complete';
+      return;
+    }
+    const btnW = 210, btnH = 54;
+    if (inBox(x, y, W / 2 - btnW / 2, cy + ch - 72, btnW, btnH)) {
+      activePress = 'next_level';
+      return;
+    }
     if (levelCompleteTimer >= 0.8) {
-      nextLevelTarget = curLevel + 1;
-      st = 'transition';
-      transitionTimer = 0;
-      hold = false;
+      activePress = 'next_level';
     }
-  } else if (st === 'transition') {
-    if (transitionTimer >= 0.5) {
-      st = 'play';
-      hold = true;
+    return;
+  }
+
+  if (st === 'dead') {
+    const cw = 290, ch = 270;
+    const cx = W / 2 - cw / 2, cy = H / 2 - ch / 2 - 20;
+
+    if (inCircle(x, y, cx + cw - 12, cy + 12, 24)) {
+      activePress = 'close_dead';
+      return;
     }
-  } else if (st === 'dead') {
-    if (performance.now() - deadAt < 400) return;
-    if (RETRY_FROM_LEVEL_START) {
-      startLevel(curLevel);
-    } else {
-      startLevel(1);
+    const btnW = 210, btnH = 54;
+    if (inBox(x, y, W / 2 - btnW / 2, cy + ch - 72, btnW, btnH)) {
+      activePress = 'try_again';
+      return;
     }
-    st = 'ready';
-    hold = false;
-  } else if (st === 'play') {
+    if (performance.now() - deadAt >= 350) {
+      activePress = 'try_again';
+    }
+    return;
+  }
+
+  if (st === 'play') {
     hold = true;
   }
 }
 
-const rel = () => { hold = false; };
-addEventListener('pointerdown', e => { e.preventDefault(); press(); });
-addEventListener('pointerup', rel);
-addEventListener('pointercancel', rel);
-addEventListener('blur', rel);
-document.addEventListener('visibilitychange', rel);
-addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) press(); } });
-addEventListener('keyup', e => { if (e.code === 'Space') rel(); });
-addEventListener('contextmenu', e => e.preventDefault());
+function handlePointerUp(e) {
+  hold = false;
+
+  if (activePress) {
+    playClickSound();
+
+    if (activePress === 'close_settings') {
+      settingsOpen = false;
+    } else if (activePress === 'toggle_sound') {
+      setSound(!soundEnabled);
+      triggerVibrate(30);
+    } else if (activePress === 'toggle_vibrate') {
+      setVibrate(!vibrateEnabled);
+      if (vibrateEnabled) triggerVibrate(40);
+    } else if (activePress === 'open_settings') {
+      settingsOpen = true;
+    } else if (activePress === 'start_level') {
+      // Game already started on pointerdown
+    } else if (activePress === 'car_garage') {
+      showToast('Coming soon');
+    } else if (activePress === 'next_level') {
+      nextLevelTarget = curLevel + 1;
+      st = 'transition';
+      transitionTimer = 0;
+      hold = false;
+    } else if (activePress === 'close_complete') {
+      st = 'ready';
+      hold = false;
+    } else if (activePress === 'try_again') {
+      if (RETRY_FROM_LEVEL_START) startLevel(curLevel);
+      else startLevel(1);
+      st = 'ready';
+      hold = false;
+    } else if (activePress === 'close_dead') {
+      st = 'ready';
+      hold = false;
+    }
+
+    activePress = null;
+  }
+}
+
+cv.addEventListener('pointerdown', e => { e.preventDefault(); handlePointerDown(e); });
+window.addEventListener('pointerup', e => { e.preventDefault(); handlePointerUp(e); });
+window.addEventListener('pointercancel', () => { hold = false; activePress = null; });
+window.addEventListener('blur', () => { hold = false; activePress = null; });
+document.addEventListener('visibilitychange', () => { hold = false; activePress = null; });
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (!e.repeat) {
+      if (st === 'ready') { st = 'play'; hold = true; }
+      else if (st === 'play') { hold = true; }
+      else if (st === 'dead' && performance.now() - deadAt > 350) { startLevel(curLevel); st = 'ready'; }
+      else if (st === 'level_complete' && levelCompleteTimer >= 0.8) {
+        nextLevelTarget = curLevel + 1; st = 'transition'; transitionTimer = 0;
+      }
+    }
+  }
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'Space') { hold = false; }
+});
+window.addEventListener('resize', () => {
+  resizeCanvas();
+  if (curConfig) {
+    prerenderSpikes(curConfig);
+    prerenderFallbackScene(curConfig);
+    preloadedPictures.forEach(pic => {
+      if (pic.loaded) updatePictureSeamlessCanvas(pic);
+    });
+  }
+});
 
 resetGame();
 step(0);
